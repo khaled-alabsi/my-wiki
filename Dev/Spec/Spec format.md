@@ -1,0 +1,63 @@
+```
+Spec: <Feature/System Name>
+
+Purpose:
+<Why this exists>
+
+Scope:
+In scope:
+- ...
+Out of scope:
+- ...
+
+Actors:
+- ...
+
+Domain concepts:
+- ...
+
+Functional requirements:
+FR-001: The system shall ...
+FR-002: The system shall ...
+
+Workflow:
+1. ...
+2. ...
+3. ...
+
+Inputs:
+- field:
+  type:
+  required:
+  rule:
+
+Outputs:
+- field:
+  type:
+  meaning:
+
+Business rules:
+BR-001: ...
+BR-002: ...
+
+States:
+- ...
+
+Interfaces:
+- ...
+
+Errors:
+- ...
+
+Non-functional requirements:
+- ...
+
+Acceptance criteria:
+AC-001:
+Given ...
+When ...
+Then ...
+
+Open questions:
+- ...
+```

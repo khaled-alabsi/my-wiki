@@ -1,0 +1,214 @@
+{
+  "main": {
+    "id": "651810d6dd8a5e95",
+    "type": "split",
+    "children": [
+      {
+        "id": "e5afd03b0791b2eb",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "c65b18c9a2b8a53f",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Dev/Architect/Mix Architecture patterns- Infra-Deployment strategies.md",
+                "mode": "preview",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Mix Architecture patterns- Infra-Deployment strategies"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "ef78e82c38541daa",
+    "type": "mobile-drawer",
+    "children": [
+      {
+        "id": "0b150645c63ef0b8",
+        "type": "leaf",
+        "state": {
+          "type": "file-explorer",
+          "state": {
+            "sortOrder": "alphabetical",
+            "autoReveal": false
+          },
+          "icon": "lucide-folder-closed",
+          "title": "Files"
+        }
+      },
+      {
+        "id": "a29b503a76e7046e",
+        "type": "leaf",
+        "state": {
+          "type": "search",
+          "state": {
+            "query": "",
+            "matchingCase": false,
+            "explainSearch": false,
+            "collapseAll": false,
+            "extraContext": false,
+            "sortOrder": "alphabetical"
+          },
+          "icon": "lucide-search",
+          "title": "Search"
+        }
+      },
+      {
+        "id": "cb6b48e33dc092e7",
+        "type": "leaf",
+        "state": {
+          "type": "tag",
+          "state": {
+            "sortOrder": "frequency",
+            "useHierarchy": true,
+            "showSearch": false,
+            "searchQuery": ""
+          },
+          "icon": "lucide-tags",
+          "title": "Tags"
+        }
+      },
+      {
+        "id": "edf0763fa5659b62",
+        "type": "leaf",
+        "state": {
+          "type": "all-properties",
+          "state": {
+            "sortOrder": "frequency",
+            "showSearch": false,
+            "searchQuery": ""
+          },
+          "icon": "lucide-archive",
+          "title": "All properties"
+        }
+      },
+      {
+        "id": "e124d50a93c4ee01",
+        "type": "leaf",
+        "state": {
+          "type": "bookmarks",
+          "state": {},
+          "icon": "lucide-bookmark",
+          "title": "Bookmarks"
+        }
+      }
+    ],
+    "currentTab": 0
+  },
+  "right": {
+    "id": "91c95cadd2295891",
+    "type": "mobile-drawer",
+    "children": [
+      {
+        "id": "ca959756cffb3312",
+        "type": "leaf",
+        "state": {
+          "type": "backlink",
+          "state": {
+            "file": "Dev/Architect/Mix Architecture patterns- Infra-Deployment strategies.md",
+            "collapseAll": false,
+            "extraContext": false,
+            "sortOrder": "alphabetical",
+            "showSearch": false,
+            "searchQuery": "",
+            "backlinkCollapsed": false,
+            "unlinkedCollapsed": true
+          },
+          "icon": "links-coming-in",
+          "title": "Backlinks"
+        }
+      },
+      {
+        "id": "014ac68f7043a31f",
+        "type": "leaf",
+        "state": {
+          "type": "outgoing-link",
+          "state": {
+            "file": "Stopping Revenge simulation.md",
+            "linksCollapsed": false,
+            "unlinkedCollapsed": true
+          },
+          "icon": "links-going-out",
+          "title": "Outgoing links"
+        }
+      },
+      {
+        "id": "2adbc614e699e9f8",
+        "type": "leaf",
+        "state": {
+          "type": "outline",
+          "state": {
+            "file": "Stopping Revenge simulation.md",
+            "followCursor": false,
+            "showSearch": false,
+            "searchQuery": ""
+          },
+          "icon": "lucide-list",
+          "title": "Outline"
+        }
+      }
+    ],
+    "currentTab": 0
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "c65b18c9a2b8a53f",
+  "lastOpenFiles": [
+    "Coba",
+    "Quick note/obsidian-latex-render-test.md",
+    "Untitled.md",
+    "Work-life/Navigating Feedback From Criticism to Growth.md",
+    "end_span.md",
+    "Quick note/compact-obsidian-working-latex.md",
+    "Quick note/Benchmarks/Token per second.md",
+    "Dev/Spec/Spec format.md",
+    "Quick note/Benchmarks",
+    "Dev/Spec",
+    "Quick note",
+    "Dev",
+    "Work-life/Workplace diplomacy.md",
+    "Work-life/Workplace distress is often not “just being sensitive..md",
+    "Work-life/Workplace diplomacy.txt",
+    "Work-life/Trigger-Situationen, Grenzkommunikation und Exit-Strategien für Softwareentwickler_ Recherche-Ergebnisse.md",
+    "Work-life/Stopping Revenge simulation.md",
+    "Work-life/Self-help report for unfair invalidation and perceived exploitation at work.md",
+    "Work-life/Public accusations or wrong assumptions.md",
+    "Work-life/exploited.md",
+    "Work-life/Assumptions.md",
+    "Work-life/Angery adhs.md",
+    "AI/Transformer/transformer-qkv-shapes.md",
+    "AI/Transformer/transformer-matrix-shapes.md",
+    "AI/Transformer/resources/Pasted image 20260620165643.png",
+    "AI/Transformer/QKV shapes.md",
+    "Dev/Monolithic decomposition/Paper/plan phases.md",
+    "Dev/Monolithic decomposition/Paper/method-idea-consolidated.md",
+    "Dev/Monolithic decomposition/Paper/Archive/domain-skeleton-microservice-decomposition-paper-scaffold.md",
+    "Dev/Monolithic decomposition/Known methods",
+    "Dev/Monolithic decomposition/Paper",
+    "Dev/Monolithic decomposition/Paper/Archive",
+    "Mathematik/vector-products-notes.md",
+    "Mathematik/resources/Cross-product.png",
+    "Mathematik/resources/Crossproduct.png",
+    "Mathematik/vector-products-notes2.md",
+    "Dev/Architect/resources/Pasted image 20260513110430.jpg",
+    "AI/Transformer/resources",
+    "Dev/Architect/resources",
+    "AI/Transformer/lora-input-output-clarified.md"
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "azure-responses/gpt-5.4-important",
+  "small_model": "lmstudio/google/gemma-4-12b",
+  "provider": {
+    "azure-responses": {
+      "npm": "@ai-sdk/openai",
+      "name": "Azure OpenAI Responses",
+      "options": {
+        "baseURL": "https://a2-agentic-system.cognitiveservices.azure.com/openai/v1/",
+        "apiKey": "{env:AZURE_OPENAI_API_KEY}"
+      },
+      "models": {
+        "gpt-5.4-important": {
+          "name": "gpt-5.4-important"
+        }
+      }
+    },
+    "lmstudio": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LM Studio",
+      "options": {
+        "baseURL": "http://localhost:1234/v1",
+        "apiKey": "lm-studio"
+      },
+      "models": {
+        "google/gemma-4-12b": {
+          "name": "google/gemma-4-12b"
+        },
+        "qwen/qwen3.6-27b": {
+          "name": "qwen/qwen3.6-27b"
+        },
+        "google/gemma-4-26b-a4b": {
+          "name": "google/gemma-4-26b-a4b"
+        }
+      }
+    }
+  }
+}
