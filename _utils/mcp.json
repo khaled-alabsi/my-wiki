@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "dev-tools": {
+      "command": "python3",
+      "args": [
+        "/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki/_utils/mcp_server.py",
+        "--tools=read-only",
+        "/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki"
+      ]
+    }
+  }
+}

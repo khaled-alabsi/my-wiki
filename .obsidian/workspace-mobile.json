@@ -4,21 +4,27 @@
     "type": "split",
     "children": [
       {
-        "id": "e5afd03b0791b2eb",
+        "id": "cb6fae8d98b5dc7d",
         "type": "tabs",
         "children": [
           {
-            "id": "c65b18c9a2b8a53f",
+            "id": "afb51bf93f513106",
             "type": "leaf",
             "state": {
-              "type": "markdown",
+              "type": "kanban",
               "state": {
-                "file": "Dev/Architect/Mix Architecture patterns- Infra-Deployment strategies.md",
-                "mode": "preview",
-                "source": false
+                "file": "Kanban/PhD.md",
+                "kanbanViewState": {
+                  "kanban-plugin": "list",
+                  "list-collapse": [
+                    false,
+                    false,
+                    false
+                  ]
+                }
               },
-              "icon": "lucide-file",
-              "title": "Mix Architecture patterns- Infra-Deployment strategies"
+              "icon": "lucide-trello",
+              "title": "PhD"
             }
           }
         ]
@@ -153,9 +159,19 @@
           "icon": "lucide-list",
           "title": "Outline"
         }
+      },
+      {
+        "id": "feaefea6b6ba09d5",
+        "type": "leaf",
+        "state": {
+          "type": "custom-frames-wikipedia",
+          "state": {},
+          "icon": "lucide-Book",
+          "title": "Wikipedia"
+        }
       }
     ],
-    "currentTab": 0
+    "currentTab": 3
   },
   "left-ribbon": {
     "hiddenItems": {
@@ -165,14 +181,35 @@
       "daily-notes:Open today's daily note": false,
       "templates:Insert template": false,
       "command-palette:Open command palette": false,
-      "bases:Create new base": false
+      "bases:Create new base": false,
+      "obsidian-kanban:Create new board": false,
+      "audio-recorder:Start/stop recording": false,
+      "obsidian-excalidraw-plugin:New drawing": false
     }
   },
-  "active": "c65b18c9a2b8a53f",
+  "active": "afb51bf93f513106",
   "lastOpenFiles": [
+    "Dairy/2026-07-18.md",
+    "Untitled.md",
+    "_templates",
+    "Dairy",
+    "Excalidraw/Drawing.png",
+    "Excalidraw/Drawing.md",
+    "Excalidraw/Drawing 2026-07-18 19.32.41.excalidraw.md",
+    "Untitled.base",
+    "Kanban/PhD.md",
+    "Excalidraw",
+    "Kanban/Reorgenise plane.md",
+    "Kanban/Understand alternative distributions.md",
+    "Reorgenise plane.md",
+    "2026-07-18.md",
+    "Todo.md",
+    "Kanban",
+    "PhD/hawkins-decomposition-t2-fault-diagnosis.md",
+    "Jj.canvas",
+    "Dev/Architect/Mix Architecture patterns- Infra-Deployment strategies.md",
     "Coba",
     "Quick note/obsidian-latex-render-test.md",
-    "Untitled.md",
     "Work-life/Navigating Feedback From Criticism to Growth.md",
     "end_span.md",
     "Quick note/compact-obsidian-working-latex.md",
@@ -184,31 +221,15 @@
     "Dev",
     "Work-life/Workplace diplomacy.md",
     "Work-life/Workplace distress is often not “just being sensitive..md",
-    "Work-life/Workplace diplomacy.txt",
     "Work-life/Trigger-Situationen, Grenzkommunikation und Exit-Strategien für Softwareentwickler_ Recherche-Ergebnisse.md",
     "Work-life/Stopping Revenge simulation.md",
     "Work-life/Self-help report for unfair invalidation and perceived exploitation at work.md",
     "Work-life/Public accusations or wrong assumptions.md",
     "Work-life/exploited.md",
     "Work-life/Assumptions.md",
-    "Work-life/Angery adhs.md",
-    "AI/Transformer/transformer-qkv-shapes.md",
-    "AI/Transformer/transformer-matrix-shapes.md",
     "AI/Transformer/resources/Pasted image 20260620165643.png",
-    "AI/Transformer/QKV shapes.md",
-    "Dev/Monolithic decomposition/Paper/plan phases.md",
-    "Dev/Monolithic decomposition/Paper/method-idea-consolidated.md",
-    "Dev/Monolithic decomposition/Paper/Archive/domain-skeleton-microservice-decomposition-paper-scaffold.md",
-    "Dev/Monolithic decomposition/Known methods",
-    "Dev/Monolithic decomposition/Paper",
-    "Dev/Monolithic decomposition/Paper/Archive",
-    "Mathematik/vector-products-notes.md",
     "Mathematik/resources/Cross-product.png",
     "Mathematik/resources/Crossproduct.png",
-    "Mathematik/vector-products-notes2.md",
-    "Dev/Architect/resources/Pasted image 20260513110430.jpg",
-    "AI/Transformer/resources",
-    "Dev/Architect/resources",
-    "AI/Transformer/lora-input-output-clarified.md"
+    "Dev/Architect/resources/Pasted image 20260513110430.jpg"
   ]
 }
