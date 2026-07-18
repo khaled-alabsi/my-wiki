@@ -24,6 +24,8 @@ Can also be set via the MCP_TOOL_MODE env var (the --tools= flag wins).
 from __future__ import annotations
 
 import fnmatch
+import functools
+import logging
 import os
 import re
 import shlex
@@ -32,10 +34,45 @@ import stat
 import subprocess
 import sys
 import time
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+
+# --------------------------------------------------------------------------
+# Logging (file only — stdout is reserved for the MCP JSON-RPC stream)
+# --------------------------------------------------------------------------
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+LOG_PATH = SCRIPT_DIR / "mcp_server.log"
+
+logger = logging.getLogger("dev-tools")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+_log_handler = RotatingFileHandler(LOG_PATH, maxBytes=2_000_000, backupCount=3, encoding="utf-8")
+_log_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+logger.addHandler(_log_handler)
+
+
+def _summarize(value: Any, limit: int = 300) -> str:
+    text = repr(value)
+    return text if len(text) <= limit else text[:limit] + "...(truncated)"
+
+
+def _logged(fn):
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        logger.info("CALL %s args=%s kwargs=%s", fn.__name__, _summarize(args), _summarize(kwargs))
+        try:
+            result = fn(*args, **kwargs)
+        except Exception:
+            logger.exception("EXCEPTION in %s", fn.__name__)
+            raise
+        logger.info("RESULT %s -> %s", fn.__name__, _summarize(result))
+        return result
+    return wrapper
+
 
 # --------------------------------------------------------------------------
 # Configuration
@@ -111,13 +148,13 @@ mcp = FastMCP("dev-tools")
 
 def read_tool(fn):
     """Register a tool that only ever reads/inspects state. Always available."""
-    return mcp.tool()(fn)
+    return mcp.tool()(_logged(fn))
 
 
 def write_tool(fn):
     """Register a tool that can mutate files/processes. Only in --tools=rw mode."""
     if TOOL_MODE == "rw":
-        return mcp.tool()(fn)
+        return mcp.tool()(_logged(fn))
     return fn
 
 
@@ -992,4 +1029,8 @@ def directory_size(path: str = ".") -> dict[str, Any]:
 # --------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    logger.info(
+        "startup: tool_mode=%s allowed_roots=%s ripgrep=%s git=%s",
+        TOOL_MODE, [str(r) for r in ALLOWED_ROOTS], RG_PATH, GIT_PATH,
+    )
     mcp.run(transport="stdio")

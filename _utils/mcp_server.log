@@ -1,0 +1,5 @@
+2026-07-18 23:11:30,073 INFO startup: tool_mode=read-only allowed_roots=['/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki'] ripgrep=/opt/homebrew/bin/rg git=/opt/homebrew/bin/git
+2026-07-18 23:11:30,081 INFO CALL list_files args=() kwargs={'path': '_utils', 'recursive': False}
+2026-07-18 23:11:30,082 INFO RESULT list_files -> {'path': '/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki/_utils', 'recursive': False, 'count': 4, 'entries': [{'path': 'mcp.json', 'type': 'file', 'size': 340}, {'path': 'mcp_server.log', 'type': 'file', 'size': 313}, {'path': 'mcp_server.py', 'type': 'file', 'siz...(truncated)
+2026-07-18 23:11:30,086 INFO CALL read_file args=() kwargs={'path': '/etc/passwd'}
+2026-07-18 23:11:30,086 INFO RESULT read_file -> "ERROR: Path '/etc/passwd' resolves outside allowed roots (/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki)"

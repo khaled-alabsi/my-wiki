@@ -7,6 +7,13 @@
         "--tools=read-only",
         "/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki"
       ]
+    },
+    "memory": {
+      "command": "python3",
+      "args": [
+        "/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki/_utils/memory_server.py",
+        "--tools=read-only"
+      ]
     }
   }
 }

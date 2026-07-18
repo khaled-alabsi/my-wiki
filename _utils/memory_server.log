@@ -1,0 +1,33 @@
+2026-07-18 23:21:16,706 INFO startup: tool_mode=rw db_path=/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki/_utils/memory.db
+2026-07-18 23:21:16,713 INFO CALL remember_entity args=() kwargs={'name': 'OrderRequest', 'entity_type': 'python-class', 'attributes': {'order_id': 'int', 'customer': 'str'}, 'notes': 'used in the checkout API', 'tags': ['coding', 'api']}
+2026-07-18 23:21:16,718 INFO RESULT remember_entity -> {'id': 1, 'kind': 'entity', 'key': 'OrderRequest', 'entity_type': 'python-class', 'attributes': {'order_id': 'int', 'customer': 'str'}, 'content': 'used in the checkout API', 'tags': ['coding', 'api'], 'created_at': '2026-07-18T23:21:16', 'updated_at': '2026-07-18T23:21:16', 'created': True}
+2026-07-18 23:21:16,720 INFO CALL remember_entity args=() kwargs={'name': 'OrderRequest', 'entity_type': 'python-class', 'attributes': {'total': 'float'}, 'notes': 'total is in cents', 'tags': ['billing']}
+2026-07-18 23:21:16,721 INFO RESULT remember_entity -> {'id': 1, 'kind': 'entity', 'key': 'OrderRequest', 'entity_type': 'python-class', 'attributes': {'order_id': 'int', 'customer': 'str', 'total': 'float'}, 'content': 'used in the checkout API\n\n---[2026-07-18T23:21:16]---\ntotal is in cents', 'tags': ['coding', 'api', 'billing'], 'created_at': '2026...(truncated)
+2026-07-18 23:21:16,723 INFO CALL recall_entity args=() kwargs={'name': 'OrderRequest'}
+2026-07-18 23:21:16,724 INFO RESULT recall_entity -> {'id': 1, 'kind': 'entity', 'key': 'OrderRequest', 'entity_type': 'python-class', 'attributes': {'order_id': 'int', 'customer': 'str', 'total': 'float'}, 'content': 'used in the checkout API\n\n---[2026-07-18T23:21:16]---\ntotal is in cents', 'tags': ['coding', 'api', 'billing'], 'created_at': '2026...(truncated)
+2026-07-18 23:21:16,725 INFO CALL recall_entity args=() kwargs={'name': 'DoesNotExist'}
+2026-07-18 23:21:16,726 INFO RESULT recall_entity -> {'error': "No entity remembered with name 'DoesNotExist'"}
+2026-07-18 23:21:16,728 INFO CALL remember_note args=() kwargs={'topic': 'PCA fault diagnosis', 'content': 'T2/SPE attribution methods overview read.', 'tags': ['phd', 'research']}
+2026-07-18 23:21:16,729 INFO RESULT remember_note -> {'id': 2, 'kind': 'note', 'key': 'PCA fault diagnosis', 'entity_type': None, 'attributes': {}, 'content': 'T2/SPE attribution methods overview read.', 'tags': ['phd', 'research'], 'created_at': '2026-07-18T23:21:16', 'updated_at': '2026-07-18T23:21:16'}
+2026-07-18 23:21:16,730 INFO CALL remember_note args=() kwargs={'topic': 'PCA fault diagnosis', 'content': 'Found Hawkins decomposition paper, still need to read residual monitoring part.', 'tags': None}
+2026-07-18 23:21:16,731 INFO RESULT remember_note -> {'id': 3, 'kind': 'note', 'key': 'PCA fault diagnosis', 'entity_type': None, 'attributes': {}, 'content': 'Found Hawkins decomposition paper, still need to read residual monitoring part.', 'tags': [], 'created_at': '2026-07-18T23:21:16', 'updated_at': '2026-07-18T23:21:16'}
+2026-07-18 23:21:16,733 INFO CALL search_memory args=() kwargs={'query': 'checkout order', 'kind': None, 'limit': 20}
+2026-07-18 23:21:16,734 INFO RESULT search_memory -> {'query': 'checkout order', 'kind': None, 'engine': 'fts5', 'count': 1, 'results': [{'id': 1, 'kind': 'entity', 'key': 'OrderRequest', 'entity_type': 'python-class', 'attributes': {'order_id': 'int', 'customer': 'str', 'total': 'float'}, 'content': 'used in the checkout API\n\n---[2026-07-18T23:21:1...(truncated)
+2026-07-18 23:21:16,736 INFO CALL search_memory args=() kwargs={'query': 'PCA fault', 'kind': None, 'limit': 20}
+2026-07-18 23:21:16,736 INFO RESULT search_memory -> {'query': 'PCA fault', 'kind': None, 'engine': 'fts5', 'count': 2, 'results': [{'id': 2, 'kind': 'note', 'key': 'PCA fault diagnosis', 'entity_type': None, 'attributes': {}, 'content': 'T2/SPE attribution methods overview read.', 'tags': ['phd', 'research'], 'created_at': '2026-07-18T23:21:16', 'upd...(truncated)
+2026-07-18 23:21:16,738 INFO CALL list_memories args=() kwargs={'kind': 'entity', 'tag': None, 'limit': 100}
+2026-07-18 23:21:16,739 INFO RESULT list_memories -> {'kind': 'entity', 'tag': None, 'count': 1, 'results': [{'id': 1, 'kind': 'entity', 'key': 'OrderRequest', 'entity_type': 'python-class', 'attributes': {'order_id': 'int', 'customer': 'str', 'total': 'float'}, 'content': 'used in the checkout API\n\n---[2026-07-18T23:21:16]---\ntotal is in cents', '...(truncated)
+2026-07-18 23:21:16,740 INFO CALL list_memories args=() kwargs={'kind': None, 'tag': 'phd', 'limit': 100}
+2026-07-18 23:21:16,741 INFO RESULT list_memories -> {'kind': None, 'tag': 'phd', 'count': 1, 'results': [{'id': 2, 'kind': 'note', 'key': 'PCA fault diagnosis', 'entity_type': None, 'attributes': {}, 'content': 'T2/SPE attribution methods overview read.', 'tags': ['phd', 'research'], 'created_at': '2026-07-18T23:21:16', 'updated_at': '2026-07-18T23:2...(truncated)
+2026-07-18 23:21:16,742 INFO CALL session_note args=() kwargs={'session_id': 'chat-42', 'content': 'user is debugging the checkout flow'}
+2026-07-18 23:21:16,743 INFO RESULT session_note -> {'id': 1, 'session_id': 'chat-42', 'created_at': '2026-07-18T23:21:16'}
+2026-07-18 23:21:16,745 INFO CALL session_note args=() kwargs={'session_id': 'chat-42', 'content': 'found bug in total calc'}
+2026-07-18 23:21:16,746 INFO RESULT session_note -> {'id': 2, 'session_id': 'chat-42', 'created_at': '2026-07-18T23:21:16'}
+2026-07-18 23:21:16,747 INFO CALL session_recall args=() kwargs={'session_id': 'chat-42', 'limit': 50}
+2026-07-18 23:21:16,748 INFO RESULT session_recall -> {'session_id': 'chat-42', 'count': 2, 'notes': [{'id': 1, 'content': 'user is debugging the checkout flow', 'created_at': '2026-07-18T23:21:16'}, {'id': 2, 'content': 'found bug in total calc', 'created_at': '2026-07-18T23:21:16'}]}
+2026-07-18 23:21:16,750 INFO CALL forget args=() kwargs={'identifier': 'OrderRequest'}
+2026-07-18 23:21:16,751 INFO RESULT forget -> {'deleted': 1, 'identifier': 'OrderRequest'}
+2026-07-18 23:21:16,753 INFO CALL recall_entity args=() kwargs={'name': 'OrderRequest'}
+2026-07-18 23:21:16,754 INFO RESULT recall_entity -> {'error': "No entity remembered with name 'OrderRequest'"}
+2026-07-18 23:21:25,014 INFO startup: tool_mode=read-only db_path=/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki/_utils/memory.db
+2026-07-18 23:21:25,425 INFO startup: tool_mode=read-only db_path=/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki/_utils/memory.db
