@@ -4,27 +4,21 @@
     "type": "split",
     "children": [
       {
-        "id": "cb6fae8d98b5dc7d",
+        "id": "6c66eef40361ffdb",
         "type": "tabs",
         "children": [
           {
-            "id": "afb51bf93f513106",
+            "id": "cd936fe41aad1efa",
             "type": "leaf",
             "state": {
-              "type": "kanban",
+              "type": "markdown",
               "state": {
-                "file": "Kanban/PhD.md",
-                "kanbanViewState": {
-                  "kanban-plugin": "list",
-                  "list-collapse": [
-                    false,
-                    false,
-                    false
-                  ]
-                }
+                "file": "Stuff.md",
+                "mode": "preview",
+                "source": true
               },
-              "icon": "lucide-trello",
-              "title": "PhD"
+              "icon": "lucide-file",
+              "title": "Stuff"
             }
           }
         ]
@@ -182,22 +176,27 @@
       "templates:Insert template": false,
       "command-palette:Open command palette": false,
       "bases:Create new base": false,
-      "obsidian-kanban:Create new board": false,
       "audio-recorder:Start/stop recording": false,
+      "obsidian-kanban:Create new board": false,
       "obsidian-excalidraw-plugin:New drawing": false
     }
   },
-  "active": "afb51bf93f513106",
+  "active": "cd936fe41aad1efa",
   "lastOpenFiles": [
+    "Quick note/Benchmarks/Token per second.md",
+    "Stuff.md",
+    "Dev/elastic stack/needen cert.md",
+    "Dev/LLM/machine learning/4- Polynomials and Expressions.md",
+    "Excalidraw/Drawing 2026-07-20 00.46.12.excalidraw.md",
+    "Untitled 1.md",
+    "Kanban/PhD.md",
     "Dairy/2026-07-18.md",
-    "Untitled.md",
     "_templates",
     "Dairy",
     "Excalidraw/Drawing.png",
     "Excalidraw/Drawing.md",
     "Excalidraw/Drawing 2026-07-18 19.32.41.excalidraw.md",
     "Untitled.base",
-    "Kanban/PhD.md",
     "Excalidraw",
     "Kanban/Reorgenise plane.md",
     "Kanban/Understand alternative distributions.md",
@@ -213,7 +212,6 @@
     "Work-life/Navigating Feedback From Criticism to Growth.md",
     "end_span.md",
     "Quick note/compact-obsidian-working-latex.md",
-    "Quick note/Benchmarks/Token per second.md",
     "Dev/Spec/Spec format.md",
     "Quick note/Benchmarks",
     "Dev/Spec",
@@ -223,10 +221,6 @@
     "Work-life/Workplace distress is often not “just being sensitive..md",
     "Work-life/Trigger-Situationen, Grenzkommunikation und Exit-Strategien für Softwareentwickler_ Recherche-Ergebnisse.md",
     "Work-life/Stopping Revenge simulation.md",
-    "Work-life/Self-help report for unfair invalidation and perceived exploitation at work.md",
-    "Work-life/Public accusations or wrong assumptions.md",
-    "Work-life/exploited.md",
-    "Work-life/Assumptions.md",
     "AI/Transformer/resources/Pasted image 20260620165643.png",
     "Mathematik/resources/Cross-product.png",
     "Mathematik/resources/Crossproduct.png",
