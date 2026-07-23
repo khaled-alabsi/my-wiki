@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Stuff.md",
-                "mode": "preview",
-                "source": true
+                "file": "Synctext.md",
+                "mode": "source",
+                "source": false
               },
               "icon": "lucide-file",
-              "title": "Stuff"
+              "title": "Synctext"
             }
           }
         ]
@@ -183,6 +183,7 @@
   },
   "active": "cd936fe41aad1efa",
   "lastOpenFiles": [
+    "Synctext.md",
     "Quick note/Benchmarks/Token per second.md",
     "Stuff.md",
     "Dev/elastic stack/needen cert.md",
@@ -220,7 +221,6 @@
     "Work-life/Workplace diplomacy.md",
     "Work-life/Workplace distress is often not “just being sensitive..md",
     "Work-life/Trigger-Situationen, Grenzkommunikation und Exit-Strategien für Softwareentwickler_ Recherche-Ergebnisse.md",
-    "Work-life/Stopping Revenge simulation.md",
     "AI/Transformer/resources/Pasted image 20260620165643.png",
     "Mathematik/resources/Cross-product.png",
     "Mathematik/resources/Crossproduct.png",

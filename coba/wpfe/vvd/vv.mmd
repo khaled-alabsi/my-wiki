@@ -1,0 +1,78 @@
+flowchart LR
+
+%% =========================
+%% Step 1 - Personal Information
+%% =========================
+
+S1["1. Customer Selection"]
+--> S2["2. Online Banking Participant"]
+--> S3["3. Existing Process Check"]
+--> S4["4. Process Introduction"]
+--> S5["5. Beneficial Ownership"]
+--> S6["6. Contact Data"]
+--> S7["7. Existing Investor Profile"]
+--> S8["8. Investment Intro"]
+--> S9["9. Financial Intro"]
+--> S10["10. Income"]
+--> S11["11. Assets"]
+--> S12["12. Financial Capacity"]
+--> S13["13. Risk Tolerance"]
+--> S14["14. Risk Scenarios"]
+--> S15["15. Knowledge & Experience"]
+--> S16["16. Sustainability Intro"]
+--> S17["17. Sustainability Overview"]
+--> S18["18. Sustainability Preference"]
+--> S19["19. Sustainability Summary"]
+
+%% =========================
+%% Step 2 - Investment Strategy
+%% =========================
+
+S19
+--> S20["20. Strategy Recommendation"]
+--> S21["21. Strategy Configuration"]
+--> S22["22. Strategy Overview"]
+--> S23["23. Portfolio Strategy"]
+--> S24["24. Generated Documents"]
+--> S25["25. Investment Profile Documents"]
+--> S26["26. Savings Configuration"]
+--> S27["27. Savings Amount"]
+--> S28["28. Order Capture"]
+--> S29["29. Fund Recommendation"]
+--> S30["30. Product Documents"]
+--> S31["31. Recommendation Summary"]
+
+%% =========================
+%% Step 3 - Depot Opening
+%% =========================
+
+S31
+--> S32["32. Settlement Account"]
+--> S33["33. Tax Residency"]
+--> S34["34. Tax Confirmation"]
+
+%% =========================
+%% Step 4 - Completion
+%% =========================
+
+S34
+--> S35["35. Final Review"]
+--> S36["36. Customer Consent"]
+--> S37["37. Documents Downloaded"]
+--> S38["38. Release"]
+--> S39["39. Backend Processing"]
+--> S40["40. Finished"]
+
+%% =========================
+%% Styling
+%% =========================
+
+classDef phase1 fill:#dbeafe,stroke:#2563eb,color:#111;
+classDef phase2 fill:#dcfce7,stroke:#16a34a,color:#111;
+classDef phase3 fill:#fef3c7,stroke:#d97706,color:#111;
+classDef phase4 fill:#fee2e2,stroke:#dc2626,color:#111;
+
+class S1,S2,S3,S4,S5,S6,S7,S8,S9,S10,S11,S12,S13,S14,S15,S16,S17,S18,S19 phase1;
+class S20,S21,S22,S23,S24,S25,S26,S27,S28,S29,S30,S31 phase2;
+class S32,S33,S34 phase3;
+class S35,S36,S37,S38,S39,S40 phase4;
