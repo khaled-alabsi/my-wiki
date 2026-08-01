@@ -13,15 +13,30 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Synctext.md",
-                "mode": "source",
+                "file": "Dev/Microfrontend/Themenblock.md",
+                "mode": "preview",
+                "source": true
+              },
+              "icon": "lucide-file",
+              "title": "Themenblock"
+            }
+          },
+          {
+            "id": "c9f50db33e0b14a4",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "How to Read and Understand Code Quickly.md",
+                "mode": "preview",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Synctext"
+              "title": "How to Read and Understand Code Quickly"
             }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "vertical"
@@ -181,9 +196,14 @@
       "obsidian-excalidraw-plugin:New drawing": false
     }
   },
-  "active": "cd936fe41aad1efa",
+  "active": "c9f50db33e0b14a4",
   "lastOpenFiles": [
+    "Dev/Read/Untitled.md",
+    "How to Read and Understand Code Quickly.md",
+    "Dev/Read",
+    "Dev/Microfrontend/Themenblock.md",
     "Synctext.md",
+    "Dev/Microfrontend",
     "Quick note/Benchmarks/Token per second.md",
     "Stuff.md",
     "Dev/elastic stack/needen cert.md",
@@ -216,11 +236,6 @@
     "Dev/Spec/Spec format.md",
     "Quick note/Benchmarks",
     "Dev/Spec",
-    "Quick note",
-    "Dev",
-    "Work-life/Workplace diplomacy.md",
-    "Work-life/Workplace distress is often not “just being sensitive..md",
-    "Work-life/Trigger-Situationen, Grenzkommunikation und Exit-Strategien für Softwareentwickler_ Recherche-Ergebnisse.md",
     "AI/Transformer/resources/Pasted image 20260620165643.png",
     "Mathematik/resources/Cross-product.png",
     "Mathematik/resources/Crossproduct.png",
