@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Launcher: runs the toolkit with the project-root venv (<vault>/.venv).
+# The venv itself lives outside iCloud; <vault>/.venv is a symlink to it.
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # -> <vault>/.rag
+root="$(cd "$here/.." && pwd)"                            # -> <vault>
+# PYTHONPATH rather than trusting rag_toolkit.pth: on macOS a .rag inside an iCloud
+# container is flagged UF_HIDDEN, and CPython 3.13+ skips hidden .pth files.
+export PYTHONPATH="$here/toolkit${PYTHONPATH:+:$PYTHONPATH}"
+exec "$root/.venv/bin/python" -m rag_toolkit.cli --rag-dir "$here" "$@"

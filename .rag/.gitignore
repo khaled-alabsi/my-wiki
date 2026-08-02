@@ -1,0 +1,29 @@
+# .rag/.gitignore — commit the reproducible parts, ignore the rebuildable ones.
+#
+# Committed:  config.toml, .ragignore, requirements.txt, bootstrap.sh, mcp.json,
+#             docs/, toolkit/, notebooks/, VERSION
+#             so another machine can rebuild the same index.
+# Ignored:    everything below — derived data, often gigabytes, and machine-specific
+#             (model caches, absolute paths inside the store).
+#
+# NOTE: no trailing slashes on the four store entries. They are SYMLINKS here
+# (pointing outside the iCloud container), and a trailing-slash pattern matches
+# directories only — `db/` would not match the symlink `db`, and git would happily
+# commit a link to a path that exists on exactly one machine.
+
+.venv
+cache
+db
+state
+
+# ...and the same names as real directories, in case they are ever un-symlinked.
+.venv/
+cache/
+db/
+state/
+
+__pycache__/
+*.pyc
+notebooks/.ipynb_checkpoints/
+*.log
+.DS_Store

@@ -1,0 +1,58 @@
+# .ragignore — what the index should skip. gitignore syntax; one pattern per line.
+# Lives at .rag/.ragignore. Applied on top of the built-in skip list and, when
+# corpus.use_gitignore is true, each source's .gitignore.
+#
+# ALREADY BUILT IN, do not repeat here: any file or directory whose name starts with
+# '.' or '_' is never indexed, at any depth. In this vault that already covers
+# .obsidian/, .git/, .trash/, .tmp/, .wiki-index/, .DS_Store and _utils/.
+#
+# After editing, run:  rag plan     (see what changes)  then  rag update
+
+# --- not notes, per the vault's own convention ------------------------------
+# index.md lines 27-28 state: "Not notes, never indexed: _utils/ (MCP servers),
+# Dev/LLM/ (code sandbox), Dev/languages/Python/*.py|.ipynb, .tmp/, .obsidian/,
+# .wiki-index/". _utils/ and the dot-folders are already covered by the built-in
+# private-name rule; these two are not, so they are declared here.
+Dev/LLM/
+Dev/languages/Python/*.py
+Dev/languages/Python/*.ipynb
+
+# Named like a credential. Excluded on the name alone — it has not been opened.
+Dev/languages/Python/key.txt
+
+# --- Excalidraw drawings ----------------------------------------------------
+# These .md files are an Obsidian plugin wrapper around compressed drawing JSON.
+# The prose in them is a handful of disconnected canvas labels ("like using PCA"),
+# wrapped around a large base64 payload — it retrieves badly and dilutes real notes.
+# Delete these three lines if you want the canvas text labels searchable.
+Excalidraw/
+*.excalidraw.md
+*.excalidrawlib
+
+# --- media ------------------------------------------------------------------
+# No text extractor exists for these; listed so `rag plan` reports them as an
+# intentional exclusion rather than an unhandled extension.
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+*.ico
+*.mp3
+*.mp4
+*.mov
+*.wav
+
+# --- secrets: never index these ---------------------------------------------
+# Defense in depth. `.env` is already covered by the built-in rule above, but a
+# secret reaching an index leaks through search results forever, so both apply.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+credentials
+secrets.*

@@ -1,2 +1,7 @@
 .env
 _utils/mcp_server.log
+
+# Symlink to the RAG virtualenv outside iCloud (~/.local/share/rag/my-wiki/venv).
+# Machine-specific: it would resolve to a path that does not exist on another Mac.
+# Recreate it with: bash .rag/bootstrap.sh
+/.venv

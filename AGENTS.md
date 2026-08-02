@@ -47,6 +47,8 @@ anything or deciding where new material goes.**
   call, not an agent's.
 - **iCloud sync.** Files can be evicted to the cloud and materialise on access. A file that appears
   missing may simply not be downloaded yet — check before concluding it was deleted.
+- **`.venv/` at the vault root is a symlink, not project code.** It points at the RAG environment
+  outside iCloud. Do not read it, index it, or treat this vault as a Python project because of it.
 - **Filenames contain spaces, German umlauts, em dashes and smart quotes.** Always quote paths.
   macOS stores them NFD-normalised, so a byte comparison against an NFC string can fail even though
   the path resolves fine.
@@ -74,6 +76,38 @@ anything or deciding where new material goes.**
 - **Never state what a source did not say.** Transcribing a screenshot means transcribing it, not
   filling in what was cut off.
 
+## Semantic search (`.rag/`)
+
+There is a local, offline retrieval index over the vault. It returns ranked passages with exact
+citations (`file:line-range — heading trail`); it does **not** write answers. Use it to find where
+something is discussed when `index.md` routing is not specific enough — especially for paraphrased
+or cross-language questions, where grep fails.
+
+```bash
+.rag/bin/rag search "how do I set a boundary when scope creeps mid-task" -k 5
+.rag/bin/rag search "Geeignetheitserklärung" --path "Banking/**"
+.rag/bin/rag update              # after adding or editing notes
+.rag/bin/rag status
+```
+
+- **It is multilingual.** An English question finds the German `Work-life/` notes and vice versa.
+- **It covers 144 files / 3055 chunks** — the notes only. It deliberately excludes everything in the
+  "not notes" hazard above, plus `Excalidraw/` and anything starting with `.` or `_`. If a search
+  finds nothing, check `.rag/.ragignore` before concluding the vault is silent on a topic.
+- **Scores are informative here:** a real hit lands 0.67–0.95; a topic the vault does not cover
+  lands at 0.001. A whole result list in the thousandths means "not in these notes".
+- **Run `update` after any bulk change**, in the same pass as updating `index.md`. The index is a
+  snapshot and will otherwise answer from stale content.
+
+**Hazard — `.rag/` is half-synced by design.** `config.toml`, `docs/`, `toolkit/`, `bootstrap.sh`
+and `requirements.txt` live in iCloud. `.rag/cache`, `.rag/db`, `.rag/state` and `<vault>/.venv` are
+**symlinks** to `~/.local/share/rag/my-wiki/` and hold 7.7 GB that must never enter iCloud. Never
+`rm -rf .rag/db` or `.rag/state` — that deletes the link and orphans the store. On a new machine
+the links arrive dangling; `bash .rag/bootstrap.sh` rebuilds them. To check whether any path is a
+link and where it really lives: `python3 -c "import os;print(os.path.realpath('<path>'))"` — a
+result under `~/.local/share/rag/` is outside iCloud, which is what you want. Full detail in
+`.rag/docs/MAINTAINER_MANUAL.md`.
+
 ## Working here
 
 | Task | Command |
@@ -83,6 +117,9 @@ anything or deciding where new material goes.**
 | Rebuild the routing map after direct edits | `/wiki refresh` |
 | Health check: duplicates, orphans, drift | `/wiki audit` |
 | Restructure folders (plans first, then asks) | `/wiki refactor` |
+| Find passages semantically, with citations | `.rag/bin/rag search "..."` |
+| Refresh the search index after edits | `.rag/bin/rag update` |
+| Rebuild search after cloning to a new Mac | `bash .rag/bootstrap.sh` |
 
 - Undo for any bulk change: `git -C <vault> reset --hard <sha>`.
 - Deleted notes go to `.wiki-index/refactor/trash/` at their original relative path, never `rm`.

@@ -1,0 +1,57 @@
+# .rag configuration — edit freely, then re-run 'rag doctor'.
+
+[project]
+root = "/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki"
+created = "2026-08-02T16:10:20+02:00"
+toolkit_version = "1.1.2"
+
+[[sources]]
+name = "my-wiki"
+path = "/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki"
+include = []
+exclude = []
+
+[corpus]
+profile = "notes"
+language = "multi"
+max_file_mb = 25.0
+follow_symlinks = false
+use_gitignore = true
+ocr = false
+
+[chunking]
+strategy = "auto"
+target_chars = 1800
+overlap_chars = 220
+min_chars = 120
+prefix_context = true
+
+[embedding]
+tier = "large"
+backend = "sentence-transformers"
+model = "BAAI/bge-m3"
+dimension = 1024
+batch_size = 16
+device = "mps"
+query_prefix = ""
+document_prefix = ""
+normalize = true
+trust_remote_code = false
+
+[store]
+kind = "lancedb"
+table = "chunks"
+
+[retrieval]
+top_k = 10
+candidates = 60
+hybrid = true
+rrf_k = 60
+rerank = true
+rerank_backend = "sentence-transformers"
+rerank_model = "BAAI/bge-reranker-v2-m3"
+rerank_candidates = 40
+
+[server]
+web_host = "127.0.0.1"
+web_port = 8765

@@ -1,0 +1,18 @@
+{
+  "_comment": [
+    "Register the my-wiki .rag index as an MCP server so any MCP-capable agent can search it.",
+    "Copy the 'mcpServers' block into your agent host's own config file — Claude Code, Cursor",
+    "and others each read a different location; this file is a source to copy from, not one",
+    "any host reads directly.",
+    "The launcher runs the workspace venv, so no interpreter needs to be on PATH.",
+    "The 'mcp' extra is already installed in .rag/.venv (mcp 2.0.0).",
+    "Tools exposed: rag_search, rag_context, rag_status, rag_sources. All read-only — an agent",
+    "can search the index but cannot trigger an index run as a side effect."
+  ],
+  "mcpServers": {
+    "rag": {
+      "command": "/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki/.rag/bin/rag",
+      "args": ["serve", "--mcp"]
+    }
+  }
+}
