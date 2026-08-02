@@ -47,8 +47,8 @@ anything or deciding where new material goes.**
   call, not an agent's.
 - **iCloud sync.** Files can be evicted to the cloud and materialise on access. A file that appears
   missing may simply not be downloaded yet — check before concluding it was deleted.
-- **`.venv/` at the vault root is a symlink, not project code.** It points at the RAG environment
-  outside iCloud. Do not read it, index it, or treat this vault as a Python project because of it.
+- **There is no `.venv/` in this vault.** The RAG environment lives outside iCloud; `.vscode/settings.json`
+  points VS Code at it. Do not create a symlink to it — see the sync hazard below.
 - **Filenames contain spaces, German umlauts, em dashes and smart quotes.** Always quote paths.
   macOS stores them NFD-normalised, so a byte comparison against an NFC string can fail even though
   the path resolves fine.
@@ -100,13 +100,17 @@ or cross-language questions, where grep fails.
   snapshot and will otherwise answer from stale content.
 
 **Hazard — `.rag/` is half-synced by design.** `config.toml`, `docs/`, `toolkit/`, `bootstrap.sh`
-and `requirements.txt` live in iCloud. `.rag/cache`, `.rag/db`, `.rag/state` and `<vault>/.venv` are
-**symlinks** to `~/.local/share/rag/my-wiki/` and hold 7.7 GB that must never enter iCloud. Never
-`rm -rf .rag/db` or `.rag/state` — that deletes the link and orphans the store. On a new machine
-the links arrive dangling; `bash .rag/bootstrap.sh` rebuilds them. To check whether any path is a
-link and where it really lives: `python3 -c "import os;print(os.path.realpath('<path>'))"` — a
-result under `~/.local/share/rag/` is outside iCloud, which is what you want. Full detail in
-`.rag/docs/MAINTAINER_MANUAL.md`.
+and `requirements.txt` live in iCloud. The heavy 7.7 GB — venv, model cache, vector store,
+manifest — lives at `~/.local/share/rag/my-wiki/`, **outside** iCloud, and `config.toml` records
+where (`project.store`, `project.venv`).
+
+**Never create a symlink inside this vault.** iCloud Drive cannot sync one: it turns each into an
+empty folder named `cache 2`, `db 2`, `.venv 2` that reappears after every deletion. If you see
+those, something made a symlink — delete the empty folders and run `bash .rag/bootstrap.sh`, which
+removes both. Editors get the interpreter from `.vscode/settings.json`, not from a link.
+
+On a new machine nothing under the store exists yet; `bash .rag/bootstrap.sh` rebuilds it. Full
+detail in `.rag/docs/MAINTAINER_MANUAL.md`.
 
 ## Working here
 

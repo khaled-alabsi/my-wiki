@@ -19,7 +19,17 @@ DEFAULT_SNIPPET_CHARS = 1200
 
 
 def build_server(rag_dir: Path) -> Any:
-    from mcp.server.fastmcp import FastMCP  # from the 'mcp' extra
+    # FastMCP lives at mcp.server.fastmcp in the 1.x SDK. The 2.0 release removed that
+    # module entirely (mcp.server now exports Server / MCPServer instead), so 'mcp' being
+    # importable says nothing about whether this will work — hence the explicit check and
+    # the version in the error, rather than "install the extra" when it is already there.
+    try:
+        from mcp.server.fastmcp import FastMCP  # from the 'mcp' extra
+    except ImportError as exc:
+        raise ImportError(
+            f"{exc}. This needs the 1.x MCP SDK: 'mcp>=1.2,<2'. "
+            f"Installed version: {_mcp_version()}"
+        ) from exc
 
     from .api import Index
 
@@ -89,18 +99,32 @@ def build_server(rag_dir: Path) -> Any:
     return server
 
 
+def _mcp_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("mcp")
+    except Exception:
+        return "not installed"
+
+
 def serve(rag_dir: Path) -> int:
     """Run the stdio server. Blocks until the client disconnects."""
     try:
         server = build_server(Path(rag_dir))
-    except ImportError:
+    except ImportError as exc:
         import sys
 
-        print(
-            "the MCP server needs the 'mcp' extra:\n"
-            "  python3 .rag/toolkit/rag_toolkit/install.py --extras mcp",
-            file=sys.stderr,
-        )
+        installed = _mcp_version()
+        if installed == "not installed":
+            detail = ("the MCP server needs the 'mcp' extra:\n"
+                      "  python3 .rag/toolkit/rag_toolkit/install.py --extras mcp")
+        else:
+            # Do not tell someone to install what they already have.
+            detail = (f"mcp {installed} is installed but is not compatible: {exc}\n"
+                      f"  the 1.x SDK is required —\n"
+                      f"  <venv>/bin/python -m pip install 'mcp>=1.2,<2'")
+        print(detail, file=sys.stderr)
         return 2
     server.run(transport="stdio")
     return 0

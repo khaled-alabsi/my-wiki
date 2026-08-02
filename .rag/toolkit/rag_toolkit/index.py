@@ -67,8 +67,8 @@ class Indexer:
         on_progress: Callable[[str, dict[str, Any]], None] | None = None,
     ) -> None:
         self.rag_dir = Path(rag_dir)
-        self.paths = config_mod.layout(self.rag_dir)
         self.cfg = cfg or config_mod.load(self.rag_dir)
+        self.paths = config_mod.layout(self.rag_dir, self.cfg)  # cfg first: it may relocate paths
         self.on_progress = on_progress or (lambda event, data: None)
         self.stats = IndexStats()
         self.embedder: Any = None

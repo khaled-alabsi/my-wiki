@@ -3,7 +3,11 @@
 [project]
 root = "/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki"
 created = "2026-08-02T16:10:20+02:00"
-toolkit_version = "1.1.2"
+toolkit_version = "1.2.2"
+# The vault is inside an iCloud container, so db, state, cache and the venv live
+# outside it and are reached by symlink. See .rag/docs/MAINTAINER_MANUAL.md §9.
+store = "/Users/Khaled.Alabsi/.local/share/rag/my-wiki"
+venv = "/Users/Khaled.Alabsi/.local/share/rag/my-wiki/venv"
 
 [[sources]]
 name = "my-wiki"

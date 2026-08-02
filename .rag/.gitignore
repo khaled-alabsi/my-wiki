@@ -3,20 +3,24 @@
 # Committed:  config.toml, .ragignore, requirements.txt, bootstrap.sh, mcp.json,
 #             docs/, toolkit/, notebooks/, VERSION
 #             so another machine can rebuild the same index.
-# Ignored:    everything below — derived data, often gigabytes, and machine-specific
-#             (model caches, absolute paths inside the store).
+# Ignored:    everything below — it is derived data, often gigabytes, and it is
+#             machine-specific (model caches, absolute paths inside the store).
 #
-# NOTE: no trailing slashes on the four store entries. They are SYMLINKS here
-# (pointing outside the iCloud container), and a trailing-slash pattern matches
-# directories only — `db/` would not match the symlink `db`, and git would happily
-# commit a link to a path that exists on exactly one machine.
+# NO TRAILING SLASHES on the four store entries. When the project sits in a
+# file-sync container these are SYMLINKS to a store outside it, and a
+# trailing-slash pattern matches directories only — `db/` would not match the
+# symlink `db`, and git would commit a link to an absolute path that exists on
+# exactly one machine.
+#
+# The same split applies twice over: whatever this file ignores must also stay
+# out of the sync container. See references/cloud-synced-corpora.md.
 
 .venv
 cache
 db
 state
 
-# ...and the same names as real directories, in case they are ever un-symlinked.
+# ...and as real directories, for a workspace that was never relocated.
 .venv/
 cache/
 db/

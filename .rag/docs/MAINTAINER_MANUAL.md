@@ -2,8 +2,9 @@
 
 Internals, tuning, and repair for the index at `<vault>/.rag`.
 
-Read §9 first if anything is broken — this install sits inside an iCloud container, which is the
-source of the only two non-obvious failure modes found so far.
+Read §9 first if anything is broken. This install sits inside an iCloud container, which is the
+source of every non-obvious failure this workspace has hit: hidden `.pth` files, unsyncable
+symlinks, and the empty `* 2` folders they leave behind.
 
 ---
 
@@ -17,30 +18,32 @@ source of the only two non-obvious failure modes found so far.
 ├── requirements.txt   pinned dependency set, with rebuild instructions
 ├── bootstrap.sh       rebuilds everything below the line, on a new machine
 ├── mcp.json           MCP registration snippet to copy into an agent host
-├── VERSION            vendored toolkit version (1.1.2), for drift detection
+├── VERSION            vendored toolkit version (1.2.0), for drift detection
 ├── docs/              these four documents
 ├── toolkit/           the vendored Python package — the code that runs
 ├── notebooks/         rag_quickstart.ipynb
 ├── bin/rag, bin/rag.cmd   launchers
-│
-│   ── everything below is a SYMLINK out of iCloud, see §9 ──
-├── cache  -> ~/.local/share/rag/my-wiki/cache   model weights, 6.4 GB
-├── db     -> ~/.local/share/rag/my-wiki/db      the lancedb vector store, 19 MB
-└── state  -> ~/.local/share/rag/my-wiki/state   manifest.sqlite, progress.json, index.lock
+└── .vscode/settings.json   (at the vault root) points VS Code at the interpreter
 
-<vault>/
-└── .venv  -> ~/.local/share/rag/my-wiki/venv    the Python environment, 1.5 GB
+~/.local/share/rag/my-wiki/     ── OUTSIDE iCloud, no link points here ──
+├── venv     the Python environment, 1.5 GB
+├── cache    model weights, 6.4 GB
+├── db       the lancedb vector store, 19 MB
+└── state    manifest.sqlite, progress.json, index.lock
 ```
 
-**The virtualenv lives at the vault root, not under `.rag/`.** That is a deliberate deviation from
-the stock toolkit layout, so editors and `python` tooling find it as the project interpreter. The
-launchers in `.rag/bin/` resolve `<vault>/.venv` explicitly, and `bootstrap.sh` writes them that
-way — which is also why `bootstrap.sh` generates the launchers itself instead of calling
-`install.py`'s `write_launchers()`, which would hardcode `.rag/.venv`.
+**There are no symlinks anywhere in the vault, deliberately.** iCloud Drive cannot sync a symlink —
+it replaces each one with an empty folder called `cache 2`, `db 2`, `.venv 2`, and they reappear
+after every deletion. The store location lives in `config.toml` (`project.store`, `project.venv`)
+and the toolkit reads it directly; `.rag/bin/rag` has the interpreter path baked in.
 
-Consequence to know about: running `install.py` directly will recreate a `.rag/.venv` and rewrite
-the launchers to point at it. If that happens, re-run `bash .rag/bootstrap.sh` — it deletes the
-stray `.rag/.venv` symlink and restores the root-venv launchers.
+**The virtualenv is not inside the vault at all.** It lives in the external store; VS Code finds it
+through `.vscode/settings.json` (`python.defaultInterpreterPath`), and the launchers have its
+absolute path written into them by `install.write_launchers()`.
+
+An earlier version symlinked it to `<vault>/.venv` (that path no longer exists). The symlink
+produced iCloud conflict folders and was removed. If you ever see `.venv 2`, `cache 2` or `db 2` appear, something recreated a symlink —
+`bash .rag/bootstrap.sh` removes both the links and the empty conflict folders.
 
 **Commit** `config.toml`, `.ragignore`, `requirements.txt`, `bootstrap.sh`, `mcp.json`, `docs/`,
 `toolkit/`, `VERSION`. **Never commit** `db/`, `state/`, `cache/`, `.venv/` — derived, large, and
@@ -137,8 +140,9 @@ healthy, and `update` raises rather than proceeding.
 
 The `dimension` in `models.py` is advisory; the loaded model is authoritative.
 
-Note the tier's real cost if you ever re-download: the registry advertises ~4600 MB for
-`bge-m3` + `bge-reranker-v2-m3`, but the on-disk cache came to **6.4 GB**.
+The registry now states the measured on-disk figures (`approx_disk_mb`), not download sizes:
+`bge-m3` is **4.3 GB** and `bge-reranker-v2-m3` **2.1 GB** — **6.4 GB** together. Earlier versions
+advertised 4600 MB for the pair, which was 40% low.
 
 ## 6. Diagnosing bad results
 
@@ -253,10 +257,8 @@ rm -rf ~/.local/share/rag/my-wiki/db/* ~/.local/share/rag/my-wiki/state/*
 .rag/bin/rag index --full
 ```
 
-**Delete the contents, not the symlinks.** `rm -rf .rag/db` would remove the *link* and leave the
-store orphaned; the next run would then create a real directory at `.rag/db` inside iCloud,
-quietly undoing the relocation. If you do that by accident, `bash .rag/bootstrap.sh` puts the
-links back.
+Delete the contents of the **store**, not anything in `.rag/`. There is nothing to delete in
+`.rag/db` — that path does not exist any more.
 
 `config.toml`, `.ragignore`, `docs/`, and `toolkit/` survive. Only derived data is discarded. On
 this vault a full pass costs about 285 seconds. This is the safe reset when the store looks
@@ -266,7 +268,7 @@ inconsistent.
 
 iCloud brings the vault and the committed half of `.rag/` — config, ignores, docs, the vendored
 toolkit, `requirements.txt`, `bootstrap.sh`. It does **not** bring the venv, the model weights, the
-vector store, or the manifest. The four symlinks will arrive dangling, or not at all.
+vector store, or the manifest; `config.toml` will point at a store path that does not exist yet.
 
 ```bash
 cd "<vault>"
@@ -276,12 +278,12 @@ bash .rag/bootstrap.sh
 That is idempotent and does the whole environment half:
 
 1. creates `~/.local/share/rag/my-wiki/{venv,cache,db,state}` (override with `STORE=...`)
-2. re-creates `.rag/{cache,db,state}` and `<vault>/.venv`, and removes a stray `.rag/.venv`
+2. creates the store directories, and removes any symlink or empty `* 2` folder left inside the vault
 3. builds the venv with the first CPython ≥ 3.11 it finds (override with `PYTHON=...`)
 4. installs the pinned set from `requirements.txt`
 5. writes `rag_toolkit.pth` **and clears `UF_HIDDEN` on it** — see above; `mv` preserves that flag,
    so it can even survive a relocation
-6. regenerates both launchers, pointed at `<vault>/.venv`
+6. regenerates both launchers, pointed at `~/.local/share/rag/my-wiki/venv/bin/python`
 7. runs `doctor`
 
 Then, one at a time — these are the slow, network-bound steps it deliberately does not run:

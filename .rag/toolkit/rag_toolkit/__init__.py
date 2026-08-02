@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
-__version__ = "1.1.2"
+__version__ = "1.2.2"
 
 __all__ = ["Index", "IndexNotBuiltError", "search", "to_markdown", "__version__"]
 

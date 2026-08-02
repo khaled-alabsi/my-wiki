@@ -10,6 +10,7 @@ Optional dependencies degrade honestly: a missing extractor makes the file
 from __future__ import annotations
 
 import importlib
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -75,6 +76,31 @@ _register((".pptx",), "office", "extract_pptx", "python-pptx")
 _register((".xlsx", ".xlsm"), "office", "extract_xlsx", "openpyxl")
 _register((".html", ".htm", ".xhtml"), "web", "extract_html", "selectolax")
 _register((".epub",), "web", "extract_epub", "selectolax")
+
+# Which install extra provides each extractor dependency. Derived from REGISTRY so a
+# new extractor cannot silently forget to declare what it needs.
+_DEP_EXTRA: dict[str, str] = {
+    "pymupdf": "documents",
+    "python-docx": "documents",
+    "python-pptx": "documents",
+    "openpyxl": "documents",
+    "selectolax": "web",
+}
+
+
+def extras_for_extensions(extensions: Iterable[str]) -> set[str]:
+    """Which install extras a corpus holding these extensions actually needs.
+
+    Installing PDF and Office support for a corpus with neither wastes a multi-package
+    download; omitting it for one with hundreds drops those files silently. Extensions
+    whose extractor is pure standard library contribute nothing.
+    """
+    wanted: set[str] = set()
+    for ext in extensions:
+        entry = REGISTRY.get(str(ext).lower())
+        if entry and entry[2] and entry[2] in _DEP_EXTRA:
+            wanted.add(_DEP_EXTRA[entry[2]])
+    return wanted
 
 CODE_EXTENSIONS = {
     ".py", ".java", ".kt", ".kts", ".cs", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx",

@@ -63,6 +63,10 @@ class BaseStore:
     # True when the store applies a SQL `where` itself. When False, retrieve.py
     # over-fetches and post-filters in Python instead.
     supports_where = False
+    # Why the last ensure_fts() failed, for doctor to report. Empty means "no failure".
+    # Kept because a swallowed message here once cost an afternoon: hybrid retrieval had
+    # silently degraded to dense-only while every other check reported healthy.
+    last_fts_error = ""
 
     def __init__(self, path: Path, dimension: int, table: str = "chunks") -> None:
         self.path = Path(path)
@@ -188,28 +192,38 @@ class LanceStore(BaseStore):
         failure there is a real failure. ``prefix`` holds the path and heading trail —
         useful for matching a heading by name, but a bonus rather than a requirement.
         """
+        self.last_fts_error = ""
         if not self._create_fts_column("text", replace):
             try:  # lancedb before 0.25 took every column in one call
                 self._table.create_fts_index(["text", "prefix"], replace=replace)
+                self.last_fts_error = ""
                 return True
-            except Exception:
+            except Exception as exc:
+                self.last_fts_error = f"{type(exc).__name__}: {exc}"
                 return False
         self._create_fts_column("prefix", replace)
         return True
 
     def _create_fts_column(self, column: str, replace: bool) -> bool:
-        """Create a single-column FTS index, tolerating the API rename in 0.25."""
+        """Create a single-column FTS index, tolerating the API rename in 0.25.
+
+        The failure message is kept rather than discarded. When this broke against
+        lancedb 0.36 the useful text — "Native FTS indexes can only be created on a
+        single field at a time" — was swallowed, and ``doctor`` could only suggest
+        checking the version. Diagnosing it meant reproducing the call by hand.
+        """
         try:
             from lancedb.index import FTS
 
             self._table.create_index(column, config=FTS(), replace=replace)
             return True
-        except Exception:
-            pass
+        except Exception as exc:
+            first = f"{type(exc).__name__}: {exc}"
         try:  # deprecated since 0.25, still functional
             self._table.create_fts_index(column, replace=replace)
             return True
-        except Exception:
+        except Exception as exc:
+            self.last_fts_error = f"{column}: {first} / fallback: {type(exc).__name__}: {exc}"
             return False
 
     def ensure_vector_index(self, min_rows: int = 20_000) -> bool:

@@ -30,8 +30,8 @@ class Index:
 
     def __init__(self, rag_dir: str | Path) -> None:
         self.rag_dir = Path(rag_dir).resolve()
-        self.paths = config_mod.layout(self.rag_dir)
         self.cfg = config_mod.load(self.rag_dir)
+        self.paths = config_mod.layout(self.rag_dir, self.cfg)  # cfg first: it may relocate paths
         self._embedder: Any = None
         self._store: store_mod.BaseStore | None = None
         self._reranker: Any = None

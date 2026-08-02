@@ -6,3 +6,5 @@
 2026-08-02 16:01:35,650 INFO startup: tool_mode=read-only allowed_roots=['/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki'] ripgrep=/opt/homebrew/bin/rg git=/opt/homebrew/bin/git
 2026-08-02 16:03:16,586 INFO startup: tool_mode=read-only allowed_roots=['/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki'] ripgrep=/opt/homebrew/bin/rg git=/opt/homebrew/bin/git
 2026-08-02 16:03:16,588 INFO startup: tool_mode=read-only allowed_roots=['/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki'] ripgrep=/opt/homebrew/bin/rg git=/opt/homebrew/bin/git
+2026-08-02 21:47:44,677 INFO startup: tool_mode=read-only allowed_roots=['/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki'] ripgrep=/opt/homebrew/bin/rg git=/opt/homebrew/bin/git
+2026-08-02 22:31:34,758 INFO startup: tool_mode=read-only allowed_roots=['/Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki'] ripgrep=/opt/homebrew/bin/rg git=/opt/homebrew/bin/git

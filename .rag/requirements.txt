@@ -1,6 +1,6 @@
 # requirements.txt — the exact environment behind this vault's RAG index.
 #
-# Captured from <vault>/.venv on 2026-08-02 with `pip freeze --local`, built by:
+# Captured from the external store venv on 2026-08-02 with `pip freeze --local`, built by:
 #   /opt/homebrew/bin/python3.13 .rag/toolkit/rag_toolkit/install.py \
 #       --extras core,torch,watch,mcp
 #
@@ -9,8 +9,9 @@
 # for the torch stack.
 #
 # To rebuild this environment from scratch:
-#   /opt/homebrew/bin/python3.13 -m venv ~/.local/share/rag/my-wiki/venv   # then: ln -s that <vault>/.venv
-#   .venv/bin/python -m pip install -r .rag/requirements.txt
+#   /opt/homebrew/bin/python3.13 -m venv ~/.local/share/rag/my-wiki/venv
+#   ~/.local/share/rag/my-wiki/venv/bin/python -m pip install -r .rag/requirements.txt
+# Or just: bash .rag/bootstrap.sh
 #
 # Direct dependencies only (what install.py actually asked for) — everything else
 # below is a transitive dependency of these:
@@ -24,12 +25,12 @@
 # HTML files. If that changes, add them with:
 #   .rag/toolkit/rag_toolkit/install.py --extras documents
 
-# Notebook support, added so .rag/notebooks/rag_quickstart.ipynb can actually run:
-#   ipykernel  — required for the venv to be selectable as a Jupyter/VS Code kernel
-#   nbclient, nbformat — headless execution and schema validation
-# NOT installed on purpose: ipywidgets. VS Code caches widget state per notebook path
-# and stale registrations cause outputs to render several times; the notebook uses
-# plain output and IPython.display.Markdown instead.
+# Notebook support so .rag/notebooks/rag_quickstart.ipynb can run: ipykernel makes the
+# venv selectable as a kernel; nbformat/nbclient validate and execute it. ipywidgets is
+# deliberately absent (VS Code re-renders stale widget state).
+#
+# mcp is pinned BELOW 2.0: the 2.x SDK removed mcp.server.fastmcp, which the MCP server
+# is built on, and an unpinned install produces a broken `rag serve --mcp`.
 
 Jinja2==3.1.6
 MarkupSafe==3.0.3
@@ -57,6 +58,7 @@ h11==0.16.0
 hf-xet==1.5.2
 httpcore2==2.9.1
 httpcore==1.0.9
+httpx-sse==0.4.3
 httpx2==2.9.1
 httpx==0.28.1
 huggingface_hub==1.26.0
@@ -76,7 +78,7 @@ lancedb==0.36.0
 markdown-it-py==4.2.0
 matplotlib-inline==0.2.2
 mcp-types==2.0.0
-mcp==2.0.0
+mcp==1.29.0
 mdurl==0.1.2
 mpmath==1.3.0
 narwhals==2.24.0
@@ -97,9 +99,11 @@ ptyprocess==0.7.0
 pure_eval==0.2.3
 pyarrow==25.0.0
 pycparser==3.0
+pydantic-settings==2.14.2
 pydantic==2.13.4
 pydantic_core==2.46.4
 python-dateutil==2.9.0.post0
+python-dotenv==1.2.2
 python-multipart==0.0.32
 pyzmq==27.1.0
 referencing==0.37.0

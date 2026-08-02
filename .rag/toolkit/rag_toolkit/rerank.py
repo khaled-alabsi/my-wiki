@@ -41,6 +41,10 @@ class CrossEncoderReranker(Reranker):
     name = "sentence-transformers"
 
     def load(self) -> "Reranker":
+        from . import models as models_mod
+
+        models_mod.prime_offline(self.cache_dir, self.model_id)
+
         from sentence_transformers import CrossEncoder  # from the 'torch' extra
 
         kwargs: dict[str, Any] = {"device": self.device or None}
@@ -65,6 +69,10 @@ class FastEmbedReranker(Reranker):
     name = "fastembed"
 
     def load(self) -> "Reranker":
+        from . import models as models_mod
+
+        models_mod.prime_offline(self.cache_dir, self.model_id)
+
         from fastembed.rerank.cross_encoder import TextCrossEncoder  # from the 'onnx' extra
 
         kwargs: dict[str, Any] = {"model_name": self.model_id}

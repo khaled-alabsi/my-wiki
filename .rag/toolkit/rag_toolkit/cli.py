@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -48,6 +49,60 @@ def _emit(payload: dict[str, Any], as_json: bool, lines: list[str] | None = None
 # --------------------------------------------------------------------------- init
 
 
+def _default_store(project_root: Path) -> Path:
+    """Where relocated heavy data goes when the project is in a sync container."""
+    base = Path(os.environ.get("XDG_DATA_HOME", "")).expanduser() if os.environ.get("XDG_DATA_HOME") \
+        else Path.home() / ".local" / "share"
+    return base / "rag" / project_root.name
+
+
+def _make_store(rag_dir: Path, store: Path, venv: Path, project_root: Path,
+                in_sync_container: bool) -> list[str]:
+    """Create the external store directories, and link to them only where that is safe.
+
+    **Never create a symlink inside a file-sync container.** iCloud Drive cannot sync
+    symlinks: it replaces each one with an empty directory named ``cache 2``, ``db 2``,
+    ``.venv 2`` and so on, which reappear after every deletion. Dropbox and OneDrive
+    mangle them in their own ways.
+
+    Nothing needs the links. ``config.layout()`` reads ``project.store`` and
+    ``project.venv`` and uses the real paths, and the launchers embed the resolved
+    interpreter path at write time. The links were only ever there so that listing
+    ``.rag/`` showed where the data went — which ``config.toml`` already says, without
+    generating conflict garbage.
+
+    Outside a sync container they are harmless and mildly useful, so they are still made.
+    """
+    notes: list[str] = []
+    for name in ("db", "state", "cache"):
+        (store / name).mkdir(parents=True, exist_ok=True)
+    venv.parent.mkdir(parents=True, exist_ok=True)
+
+    if in_sync_container:
+        notes.append("no symlinks created inside the sync container — it cannot sync them; "
+                     "config.toml records the real locations")
+        return notes
+
+    for name in ("db", "state", "cache"):
+        link = rag_dir / name
+        if link.is_symlink() or not link.exists():
+            try:
+                if link.is_symlink():
+                    link.unlink()
+                link.symlink_to(store / name)
+            except OSError:
+                notes.append(f"could not link .rag/{name} (the real path is still used)")
+    root_link = project_root / ".venv"
+    if venv != root_link and (root_link.is_symlink() or not root_link.exists()):
+        try:
+            if root_link.is_symlink():
+                root_link.unlink()
+            root_link.symlink_to(venv)
+        except OSError:
+            notes.append(f"could not link {root_link}")
+    return notes
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     project_root = Path(args.project_root or Path.cwd()).resolve()
     rag_dir = Path(args.rag_dir).resolve() if args.rag_dir else config_mod.rag_dir_for(project_root)
@@ -73,6 +128,26 @@ def cmd_init(args: argparse.Namespace) -> int:
     cfg["sources"] = sources
     cfg["corpus"]["profile"] = args.profile or profile
 
+    # A project inside a file-sync container must not hold the heavy, rebuildable
+    # data: gigabytes of model weights and a virtualenv would sync, sync eviction
+    # breaks the install, and a synced manifest paired with a machine-local store
+    # yields an empty index that reports success. Relocate by default; --no-relocate
+    # keeps everything inside .rag/ for anyone who has a reason to.
+    container = detect.sync_container(project_root)
+    relocate_notes: list[str] = []
+    if args.store:
+        cfg["project"]["store"] = str(Path(args.store).expanduser().resolve())
+    elif container["kind"] and not args.no_relocate:
+        cfg["project"]["store"] = str(_default_store(project_root))
+    if args.venv:
+        cfg["project"]["venv"] = str(Path(args.venv).expanduser().resolve())
+    elif cfg["project"]["store"]:
+        # The venv is the other multi-GB directory, so it moves too. It lives beside
+        # the rest of the store; a symlink at <project>/.venv points editors at it.
+        cfg["project"]["venv"] = str(Path(cfg["project"]["store"]) / "venv")
+
+    paths = config_mod.layout(rag_dir, cfg)  # re-derive: store/venv may have moved
+
     # Estimate the chunk count before choosing a tier: a corpus large enough to make a
     # heavy model's run time dominate should step the tier down.
     try:
@@ -90,6 +165,11 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     for key in ("docs", "state", "db", "cache", "notebooks", "bin"):
         paths[key].mkdir(parents=True, exist_ok=True)
+    if cfg["project"]["store"]:
+        relocate_notes = _make_store(
+            rag_dir, Path(cfg["project"]["store"]), paths["venv"], project_root,
+            in_sync_container=bool(container["kind"]),
+        )
     config_mod.save(cfg, rag_dir)
     paths["version"].write_text(f"{__version__}\n", encoding="utf-8")
 
@@ -97,6 +177,8 @@ def cmd_init(args: argparse.Namespace) -> int:
         "rag_dir": str(rag_dir), "project_root": str(project_root), "sources": sources,
         "host": host, "corpus": primary, "profile": cfg["corpus"]["profile"],
         "selection": selection, "estimated_chunks": estimate,
+        "sync_container": container,
+        "store": cfg["project"]["store"], "venv": cfg["project"]["venv"],
         "extras": models.extras_for(
             cfg["embedding"]["backend"], cfg["retrieval"]["rerank_backend"]
         ),
@@ -111,10 +193,34 @@ def cmd_init(args: argparse.Namespace) -> int:
         f"tier        {selection['tier']} — " + "; ".join(selection["notes"]),
         f"embedding   {cfg['embedding']['model']} via {cfg['embedding']['backend']}",
         f"reranker    {cfg['retrieval']['rerank_model'] or 'none'}",
-        f"download    ~{selection['download_mb']} MB of models on first run",
+        f"disk        ~{selection['disk_mb']} MB of model weights on first run",
+    ]
+    if container["kind"]:
+        lines.append(f"sync        inside {container['label']} — {container['root']}")
+    if cfg["project"]["store"]:
+        lines += [
+            f"store       {cfg['project']['store']}",
+            f"venv        {cfg['project']['venv']}",
+            "            db, state, cache and the venv were placed OUTSIDE the sync",
+            "            container: they are rebuildable, and a synced manifest over a",
+            "            local store silently produces an empty index. No symlinks were",
+            "            left behind — the container cannot sync them.",
+        ]
+        lines += [f"            note: {n}" for n in relocate_notes]
+    elif container["kind"]:
+        lines.append("            --no-relocate given: heavy data stays inside the container")
+    # install.py builds the venv from whichever interpreter runs it. On the torch tiers
+    # that must not be a CPython newer than the stack has wheels for, so name the safe
+    # one explicitly rather than letting `python3` decide.
+    interp = host.get("interpreters", {})
+    installer_python = interp.get("recommended") or sys.executable
+    needs_torch = cfg["embedding"]["backend"] == "sentence-transformers"
+    if needs_torch and interp.get("reason") and installer_python != sys.executable:
+        lines.append(f"python      {interp['reason']}")
+    lines += [
         "",
         "Next, install dependencies (this downloads packages — run it yourself):",
-        f"  {sys.executable} {rag_dir / 'toolkit' / 'rag_toolkit' / 'install.py'}",
+        f"  {installer_python} {rag_dir / 'toolkit' / 'rag_toolkit' / 'install.py'}",
     ]
     _emit(payload, args.json, lines)
     return 0
@@ -308,6 +414,11 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--tier", default="auto", help="auto|large|balanced|light|api")
     init.add_argument("--language", default="auto", help="auto|en|multi")
     init.add_argument("--force", action="store_true", help="overwrite an existing config.toml")
+    init.add_argument("--store", default="",
+                      help="where db/state/cache live (default: inside .rag, or outside a sync container)")
+    init.add_argument("--venv", default="", help="where the virtualenv lives (default: .rag/.venv)")
+    init.add_argument("--no-relocate", action="store_true",
+                      help="keep heavy data inside .rag even in a sync container")
     init.set_defaults(func=cmd_init)
 
     plan = sub.add_parser("plan", help="dry run: what would be indexed")

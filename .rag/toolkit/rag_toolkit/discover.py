@@ -190,6 +190,48 @@ TEXT_YIELD = {
 DEFAULT_TEXT_YIELD = 0.95
 
 
+def _sample_chunk_ratio(
+    cfg: dict[str, Any], candidates: list["Candidate"], limit: int = 24
+) -> tuple[float, int]:
+    """Measure real chunks-per-text-byte by chunking a spread of actual files.
+
+    ``text_bytes // stride`` assumes chunks fill to ``target_chars``, which structural
+    splitting never does: a heading-dense Markdown corpus produced 3055 chunks where the
+    arithmetic predicted 1279 — 2.4x low, on the number step 05 uses to project runtime.
+
+    Only extensions whose extractor is pure standard library are sampled, so this stays
+    safe to call before the optional dependencies are installed. Returns
+    ``(chunks_per_byte, files_sampled)``; a zero ratio means "fall back to arithmetic".
+    """
+    from . import chunk as chunker
+    from . import extract
+
+    safe = [c for c in candidates
+            if (extract.REGISTRY.get(c.ext) or ("", "", "x"))[2] == ""]
+    if not safe:
+        return 0.0, 0
+    step = max(1, len(safe) // limit)
+    sample = safe[::step][:limit]
+
+    chunks = 0
+    chars = 0
+    used = 0
+    for candidate in sample:
+        try:
+            doc = extract.extract(candidate.path)
+            if doc.error or doc.is_empty:
+                continue
+            produced = chunker.chunk_document(doc, cfg, candidate.rel_path)
+        except Exception:
+            continue
+        chunks += len(produced)
+        chars += doc.char_count
+        used += 1
+    if used < 3 or chars <= 0:
+        return 0.0, used
+    return chunks / chars, used
+
+
 def plan(cfg: dict[str, Any], rag_dir: Path, sample_skips: int = 25) -> dict[str, Any]:
     """Dry-run summary: what would be indexed, what would not, and a chunk estimate."""
     target = int(cfg.get("chunking", {}).get("target_chars", 1800))
@@ -204,6 +246,7 @@ def plan(cfg: dict[str, Any], rag_dir: Path, sample_skips: int = 25) -> dict[str
     skips: dict[str, int] = {}
     examples: list[str] = []
 
+    candidates: list[Candidate] = []
     for source in cfg.get("sources", []):
         for item in iter_source(cfg, rag_dir, source, collect_skips=True):
             if isinstance(item, Skipped):
@@ -217,13 +260,30 @@ def plan(cfg: dict[str, Any], rag_dir: Path, sample_skips: int = 25) -> dict[str
             text_bytes += item.size * TEXT_YIELD.get(item.ext, DEFAULT_TEXT_YIELD)
             by_ext[item.ext or "<none>"] = by_ext.get(item.ext or "<none>", 0) + 1
             by_source[item.source] = by_source.get(item.source, 0) + 1
+            candidates.append(item)
+
+    # Prefer a measured ratio over the stride arithmetic; fall back when the corpus is
+    # too small or too exotic to sample. estimate_basis says which one produced the number.
+    basis = "bytes"
+    sampled_files = 0
+    estimated = max(files, int(text_bytes // stride)) if files else 0
+    if files:
+        try:
+            ratio, sampled_files = _sample_chunk_ratio(cfg, candidates)
+        except Exception:
+            ratio, sampled_files = 0.0, 0
+        if ratio > 0:
+            estimated = max(files, int(text_bytes * ratio))
+            basis = "sampled"
 
     return {
         "files": files,
         "total_bytes": total_bytes,
         "total_mb": round(total_bytes / 1024**2, 1),
         "estimated_text_mb": round(text_bytes / 1024**2, 1),
-        "estimated_chunks": max(files, int(text_bytes // stride)) if files else 0,
+        "estimated_chunks": estimated,
+        "estimate_basis": basis,
+        "estimate_sampled_files": sampled_files,
         "by_extension": dict(sorted(by_ext.items(), key=lambda kv: kv[1], reverse=True)[:30]),
         "by_source": by_source,
         "skipped": dict(sorted(skips.items(), key=lambda kv: kv[1], reverse=True)),

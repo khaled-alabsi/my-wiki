@@ -1,39 +1,42 @@
 #!/usr/bin/env bash
-# bootstrap.sh — rebuild the machine-local half of this vault's RAG index.
+# bootstrap.sh — rebuild the machine-local half of this project's RAG index.
 #
-# The vault syncs through iCloud, but the heavy parts are deliberately NOT in it:
-# they are large, machine-specific, and fully rebuildable. They live outside the
-# iCloud container and are reached through symlinks.
 #
-#     <vault>/.venv -> $STORE/venv    the Python environment   (~1.5 GB)
-#     .rag/cache    -> $STORE/cache   downloaded model weights (~6.4 GB)
-#     .rag/db       -> $STORE/db      the LanceDB vector store
-#     .rag/state    -> $STORE/state   manifest.sqlite, the resume record
+# Why this exists: the project lives in a file-sync container, so the heavy and fully
+# rebuildable parts are kept outside it, at $STORE:
 #
-# The virtualenv lives at the VAULT ROOT (<vault>/.venv), not inside .rag/, so
-# editors pick it up as the project interpreter. The launchers know this.
+#     $STORE/venv     the Python environment
+#     $STORE/cache    downloaded model weights
+#     $STORE/db       the vector store
+#     $STORE/state    manifest.sqlite, the resume record
 #
-# Run this on a new machine, or any time those symlinks are broken. It is
-# idempotent: existing pieces are left alone, missing ones are rebuilt.
+# Those paths are recorded in .rag/config.toml as project.store and project.venv, and
+# the toolkit reads them directly. There are NO symlinks pointing at them from inside
+# the project — a sync container cannot sync a symlink and turns each one into an empty
+# "name 2" folder that reappears no matter how often you delete it.
 #
-#     bash .rag/bootstrap.sh                 # default store location
+# db and state ALWAYS move together. A synced manifest describing a store that is
+# not there makes `update` skip every file and report success on an empty index.
+#
+# Idempotent: existing pieces are left alone, missing ones are rebuilt.
+#
+#     bash .rag/bootstrap.sh
 #     STORE=/some/other/path bash .rag/bootstrap.sh
 #     PYTHON=/opt/homebrew/bin/python3.13 bash .rag/bootstrap.sh
 #
-# It does NOT build the index — that is the last step and it is printed at the end,
-# because it takes minutes and downloads several GB of model weights on first run.
+# It does NOT build the index. That step is slow and downloads gigabytes of model
+# weights, so it is printed at the end for you to run.
 
 set -euo pipefail
 
 RAG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VAULT="$(cd "$RAG_DIR/.." && pwd)"
-STORE="${STORE:-$HOME/.local/share/rag/my-wiki}"
+PROJECT="$(cd "$RAG_DIR/.." && pwd)"
+STORE="${STORE:-/Users/Khaled.Alabsi/.local/share/rag/my-wiki}"
 
-# Any CPython >= 3.11 works (the toolkit needs tomllib). 3.13 is what this was built
-# with; 3.14 was avoided as a base for the torch stack. Override with PYTHON=...
+# Any CPython >= 3.11 works (the toolkit needs tomllib). Override with PYTHON=...
 PYTHON="${PYTHON:-}"
 if [ -z "$PYTHON" ]; then
-  for candidate in python3.13 python3.12 python3.11 python3; do
+  for candidate in /opt/homebrew/bin/python3.13 python3.13 python3.12 python3.11 python3; do
     if command -v "$candidate" >/dev/null 2>&1; then PYTHON="$(command -v "$candidate")"; break; fi
   done
 fi
@@ -42,45 +45,34 @@ if [ -z "$PYTHON" ]; then
   exit 1
 fi
 
-echo "vault   $VAULT"
+echo "project $PROJECT"
 echo "store   $STORE"
 echo "python  $PYTHON ($("$PYTHON" -V 2>&1))"
 echo
 
-# --- 1. the external store and its symlinks ---------------------------------
+# --- 1. external store ------------------------------------------------------
+# NO SYMLINKS ARE CREATED INSIDE THE PROJECT. A file-sync container cannot sync a
+# symlink: iCloud Drive replaces each one with an empty directory called "cache 2",
+# "db 2", ".venv 2", and they come back after every deletion. Nothing needs them —
+# config.toml records the real locations and the launchers embed the resolved
+# interpreter path. Clean up any that a previous version left behind.
 mkdir -p "$STORE"
-
-# cache / db / state hang off .rag/
-for name in cache db state; do
+for name in cache db state venv; do
   mkdir -p "$STORE/$name"
-  target="$RAG_DIR/$name"
-  if [ -L "$target" ]; then
-    echo "ok      .rag/$name -> $(readlink "$target")"
-  elif [ -e "$target" ]; then
-    echo "WARN    .rag/$name exists and is not a symlink — leaving it alone" >&2
-  else
-    ln -s "$STORE/$name" "$target"
-    echo "linked  .rag/$name -> $STORE/$name"
-  fi
 done
+echo "ok      store ready at $STORE"
 
-# the venv hangs off the VAULT ROOT
-mkdir -p "$STORE/venv"
-if [ -e "$VAULT/.venv" ] && [ ! -L "$VAULT/.venv" ]; then
-  echo "WARN    <vault>/.venv exists and is not a symlink — leaving it alone" >&2
-else
-  ln -sfn "$STORE/venv" "$VAULT/.venv"
-  echo "linked  <vault>/.venv -> $STORE/venv"
-fi
-
-# a stale .rag/.venv from an older layout would shadow nothing, but it confuses
-if [ -L "$RAG_DIR/.venv" ]; then
-  rm -f "$RAG_DIR/.venv"
-  echo "removed .rag/.venv (superseded by <vault>/.venv)"
-fi
+removed=0
+for stale in "$RAG_DIR/cache" "$RAG_DIR/db" "$RAG_DIR/state" "$RAG_DIR/.venv" "$PROJECT/.venv"; do
+  if [ -L "$stale" ]; then rm -f "$stale"; removed=$((removed + 1)); fi
+done
+# ...and the empty conflict copies the sync client made from them.
+find "$RAG_DIR" "$PROJECT" -maxdepth 1 -type d -name "* 2" -empty -print0 2>/dev/null \
+  | xargs -0 -r rmdir 2>/dev/null || true
+[ "$removed" -gt 0 ] && echo "removed $removed symlink(s) from inside the sync container"
 echo
 
-# --- 2. the virtualenv ------------------------------------------------------
+# --- 2. virtualenv ----------------------------------------------------------
 VENV_PY="$STORE/venv/bin/python"
 if [ ! -x "$VENV_PY" ]; then
   echo "creating virtualenv…"
@@ -95,51 +87,31 @@ echo "installing dependencies from requirements.txt…"
 "$VENV_PY" -m pip install -r "$RAG_DIR/requirements.txt" --quiet
 echo "ok      dependencies installed"
 
-# --- 3. put the vendored toolkit on the venv's path -------------------------
+# --- 3. vendored toolkit on the venv path -----------------------------------
 SITE_PACKAGES="$("$VENV_PY" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
 printf '%s\n' "$RAG_DIR/toolkit" > "$SITE_PACKAGES/rag_toolkit.pth"
 
-# macOS marks files under a dot-directory in an iCloud container UF_HIDDEN, and
-# CPython 3.13+ SKIPS hidden .pth files — the file is then valid but never read,
-# and every launcher call dies with ModuleNotFoundError. Clear it defensively;
-# `mv` preserves the flag, so it can even survive a relocation.
-if command -v chflags >/dev/null 2>&1; then
-  chflags nohidden "$SITE_PACKAGES/rag_toolkit.pth" 2>/dev/null || true
-fi
+# macOS marks files under a dot-directory in a sync container UF_HIDDEN, and CPython
+# 3.13+ SKIPS hidden .pth files — the file is then valid but never read, and every
+# launcher call dies with ModuleNotFoundError. `mv` preserves the flag, so it can
+# even survive a relocation. Clear it defensively.
+command -v chflags >/dev/null 2>&1 && chflags nohidden "$SITE_PACKAGES/rag_toolkit.pth" 2>/dev/null || true
 echo "ok      rag_toolkit.pth written to $SITE_PACKAGES"
 
 # --- 4. launchers -----------------------------------------------------------
-# Written here rather than by install.py, because the stock toolkit expects the
-# venv at .rag/.venv and this workspace keeps it at the vault root instead.
-mkdir -p "$RAG_DIR/bin"
-cat > "$RAG_DIR/bin/rag" <<'LAUNCHER'
-#!/usr/bin/env bash
-# Launcher: runs the toolkit with the project-root venv (<vault>/.venv).
-# The venv itself lives outside iCloud; <vault>/.venv is a symlink to it.
-set -euo pipefail
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"   # -> <vault>/.rag
-root="$(cd "$here/.." && pwd)"                            # -> <vault>
-# PYTHONPATH rather than trusting rag_toolkit.pth: on macOS a .rag inside an iCloud
-# container is flagged UF_HIDDEN, and CPython 3.13+ skips hidden .pth files.
-export PYTHONPATH="$here/toolkit${PYTHONPATH:+:$PYTHONPATH}"
-exec "$root/.venv/bin/python" -m rag_toolkit.cli --rag-dir "$here" "$@"
-LAUNCHER
-chmod 755 "$RAG_DIR/bin/rag"
+"$VENV_PY" - <<PY
+import sys
+from pathlib import Path
+sys.path.insert(0, "$RAG_DIR/toolkit")
+from rag_toolkit import install
+for p in install.write_launchers(Path("$RAG_DIR")):
+    print("ok      launcher", p.name)
+PY
 
-cat > "$RAG_DIR/bin/rag.cmd" <<'LAUNCHER'
-@echo off
-setlocal
-set "HERE=%~dp0.."
-set "ROOT=%HERE%\.."
-set "PYTHONPATH=%HERE%\toolkit;%PYTHONPATH%"
-"%ROOT%\.venv\Scripts\python.exe" -m rag_toolkit.cli --rag-dir "%HERE%" %*
-LAUNCHER
-echo "ok      launchers written to .rag/bin/"
-
-# --- 4b. Jupyter kernel -----------------------------------------------------
+# --- 5. Jupyter kernel ------------------------------------------------------
 # Without this the notebook falls back to whatever kernel the editor offers —
-# usually a system python with no torch — and fails on `import
-# sentence_transformers` deep inside a call rather than at startup.
+# usually a system python with no torch. rag_toolkit still imports there (it is
+# pure Python), so the failure surfaces late and confusingly inside a search.
 if "$VENV_PY" -c "import ipykernel" >/dev/null 2>&1; then
   "$VENV_PY" -m ipykernel install --user \
       --name my-wiki-rag --display-name "my-wiki RAG (.venv)" >/dev/null 2>&1 \
@@ -149,7 +121,7 @@ else
   echo "note    ipykernel not installed — notebook kernel not registered"
 fi
 
-# --- 5. verify --------------------------------------------------------------
+# --- 6. verify --------------------------------------------------------------
 echo
 echo "verifying…"
 "$RAG_DIR/bin/rag" doctor || true
@@ -160,14 +132,14 @@ if "$RAG_DIR/bin/rag" status 2>/dev/null | grep -qE '^indexed +[1-9]'; then
   echo "Environment is ready and the index is already populated — nothing else to do."
   echo
   echo "    .rag/bin/rag search \"your question\""
-  echo "    .rag/bin/rag update              # after editing notes"
+  echo "    .rag/bin/rag update              # after editing content"
 else
   echo "Environment is ready. The index itself is NOT built yet."
   echo
-  echo "Next, from the vault root:"
+  echo "Next, from the project root:"
   echo
-  echo "    .rag/bin/rag doctor --models    # downloads ~6.4 GB of model weights, once"
-  echo "    .rag/bin/rag index              # builds the index (~285s for 144 notes)"
+  echo "    .rag/bin/rag doctor --models    # downloads the model weights, once"
+  echo "    .rag/bin/rag index              # ~285s for 144 notes"
   echo "    .rag/bin/rag status             # confirm: files > 0 and chunks > 0"
   echo
   echo "Run those one at a time — never two index or model jobs at once."

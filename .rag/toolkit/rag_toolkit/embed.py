@@ -71,6 +71,10 @@ class FastEmbedEmbedder(Embedder):
     name = "fastembed"
 
     def load(self) -> "Embedder":
+        from . import models as models_mod
+
+        models_mod.prime_offline(self.cache_dir, self.model_id)
+
         from fastembed import TextEmbedding  # from the 'onnx' extra
 
         kwargs: dict[str, Any] = {"model_name": self.model_id}
@@ -97,6 +101,11 @@ class SentenceTransformerEmbedder(Embedder):
     name = "sentence-transformers"
 
     def load(self) -> "Embedder":
+        from . import models as models_mod
+
+        # Do not touch the network when the weights are already here.
+        models_mod.prime_offline(self.cache_dir, self.model_id)
+
         from sentence_transformers import SentenceTransformer  # from the 'torch' extra
 
         kwargs: dict[str, Any] = {"device": self.device or None}
@@ -105,7 +114,10 @@ class SentenceTransformerEmbedder(Embedder):
         if self.trust_remote_code:
             kwargs["trust_remote_code"] = True
         self._model = SentenceTransformer(self.model_id, **kwargs)
-        self._dimension = int(self._model.get_sentence_embedding_dimension() or 0)
+        # Renamed in sentence-transformers 5; the old name still works but warns.
+        dimension_of = (getattr(self._model, "get_embedding_dimension", None)
+                        or self._model.get_sentence_embedding_dimension)
+        self._dimension = int(dimension_of() or 0)
         if not self._dimension:  # some remote-code models only report after a forward pass
             self._dimension = len(self._model.encode("dimension probe"))
         return self

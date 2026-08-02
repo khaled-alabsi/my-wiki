@@ -149,9 +149,12 @@ for this and tells you what to do rather than letting it surface mid-search.
 If the kernel is not in the picker, register it once:
 
 ```bash
-.venv/bin/python -m ipykernel install --user \
+~/.local/share/rag/my-wiki/venv/bin/python -m ipykernel install --user \
     --name my-wiki-rag --display-name "my-wiki RAG (.venv)"
 ```
+
+There is no `.venv` in the vault — the environment lives outside iCloud. `bash .rag/bootstrap.sh`
+registers this kernel for you.
 
 ```python
 from rag_toolkit import Index, to_markdown

@@ -13,6 +13,9 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import os
+import stat
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -71,12 +74,19 @@ class Report:
 
 def run_doctor(rag_dir: Path, args: argparse.Namespace) -> int:
     report = Report()
-    paths = config_mod.layout(rag_dir)
+    # Load the config before deriving paths: project.store and project.venv relocate
+    # db, state, cache and the venv, and every later check needs the real locations.
+    try:
+        preload = config_mod.load(rag_dir)
+    except Exception:
+        preload = {}
+    paths = config_mod.layout(rag_dir, preload)
 
     _check_workspace(report, rag_dir, paths)
     cfg = _check_config(report, rag_dir, paths)
     _check_runtime(report)
-    _check_packages(report, cfg)
+    _check_import(report, rag_dir, paths)
+    _check_packages(report, cfg, rag_dir)
     _check_sources(report, cfg, rag_dir)
     _check_store_roundtrip(report, cfg)
     _check_index(report, cfg, rag_dir, paths)
@@ -161,7 +171,55 @@ def _check_runtime(report: Report) -> None:
         report.add("hardware", OK, detail)
 
 
-def _check_packages(report: Report, cfg: dict[str, Any]) -> None:
+def _check_import(report: Report, rag_dir: Path, paths: dict[str, Path]) -> None:
+    """Can the venv interpreter import ``rag_toolkit`` on its own?
+
+    Every other check can pass while the answer is no. The launchers export
+    ``PYTHONPATH``, so they work regardless; anything else — a notebook kernel, a
+    plain ``python -c``, an MCP host — depends on ``rag_toolkit.pth`` being read.
+
+    On macOS a ``.rag`` inside a file-sync container gets ``UF_HIDDEN`` on its files,
+    and CPython 3.13+ skips hidden ``.pth`` files. The file is then byte-correct and
+    never read. That is reported explicitly here, because nothing about the symptom
+    points at it.
+    """
+    python = paths["venv"] / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    if not python.exists():
+        report.add("import", SKIP, f"no interpreter at {python}", "run install.py")
+        return
+
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    try:
+        proc = subprocess.run(
+            [str(python), "-c", "import rag_toolkit; print(rag_toolkit.__version__)"],
+            capture_output=True, text=True, timeout=60, env=env,
+        )
+    except Exception as exc:
+        report.add("import", WARN, f"could not run the venv interpreter: {exc}", "")
+        return
+
+    if proc.returncode == 0:
+        report.add("import", OK, f"'import rag_toolkit' works without PYTHONPATH "
+                                 f"(version {proc.stdout.strip()})")
+        return
+
+    hint = "re-run install.py to rewrite rag_toolkit.pth"
+    pth = next(iter(paths["venv"].glob("lib/python*/site-packages/rag_toolkit.pth")), None) \
+        or next(iter(paths["venv"].glob("Lib/site-packages/rag_toolkit.pth")), None)
+    detail = "the venv cannot import rag_toolkit without PYTHONPATH"
+    if pth is None:
+        detail += " — rag_toolkit.pth is missing"
+    elif hasattr(os, "chflags"):
+        try:
+            if os.lstat(pth).st_flags & stat.UF_HIDDEN:
+                detail += f" — {pth.name} is flagged UF_HIDDEN, and CPython 3.13+ skips hidden .pth files"
+                hint = f"chflags nohidden '{pth}'"
+        except OSError:
+            pass
+    report.add("import", WARN, detail, hint)
+
+
+def _check_packages(report: Report, cfg: dict[str, Any], rag_dir: Path) -> None:
     needed = {
         cfg.get("embedding", {}).get("backend", ""): "the configured embedding backend",
         cfg.get("retrieval", {}).get("rerank_backend", ""): "the configured reranker",
@@ -183,11 +241,31 @@ def _check_packages(report: Report, cfg: dict[str, Any]) -> None:
         if module in required:
             report.add(f"package {module}", FAIL, f"missing — {why}",
                        "re-run install.py, or change the backend in config.toml")
-    optional_absent = [m for m, _ in absent if m not in required]
-    report.add("packages", OK if not [m for m, _ in absent if m in required] else WARN,
-               f"{len(present)} present"
-               + (f", optional missing: {', '.join(optional_absent)}" if optional_absent else ""),
-               "install.py --extras documents,web,mcp,watch adds the optional ones")
+
+    # Split "missing and this corpus needs it" from "missing and irrelevant here".
+    # Listing every extractor as `optional missing` reads as a deficiency even when
+    # the corpus has no PDF, Office or HTML file for any of them to open.
+    extractor_modules = {"pymupdf": "documents", "docx": "documents", "pptx": "documents",
+                         "openpyxl": "documents", "selectolax": "web"}
+    try:
+        wanted_extras = extract.extras_for_extensions(discover.plan(cfg, rag_dir)["by_extension"])
+    except Exception:
+        wanted_extras = {"documents", "web"}  # cannot tell; assume they matter
+
+    absent_modules = [m for m, _ in absent if m not in required]
+    relevant = [m for m in absent_modules
+                if extractor_modules.get(m, "core") in wanted_extras or m not in extractor_modules]
+    irrelevant = [m for m in absent_modules if m not in relevant]
+
+    parts = [f"{len(present)} present"]
+    if relevant:
+        parts.append(f"missing: {', '.join(relevant)}")
+    if irrelevant:
+        parts.append(f"not needed for this corpus: {', '.join(irrelevant)}")
+    report.add("packages",
+               OK if not [m for m, _ in absent if m in required] else WARN,
+               ", ".join(parts),
+               "install.py --extras documents,web,mcp,watch,notebook adds the optional ones")
 
 
 def _check_sources(report: Report, cfg: dict[str, Any], rag_dir: Path) -> None:
@@ -274,8 +352,12 @@ def _check_store_roundtrip(report: Report, cfg: dict[str, Any]) -> None:
 
     detail = f"'{store.kind}' round-trip ok (upsert, search, delete; {remaining} row left)"
     if store.kind == "lancedb" and not fts_built:
-        report.add("store", WARN, detail + ", but the full-text index could not be built",
-                   "hybrid search will be dense-only; check the lancedb version")
+        # Report the real exception. Saying only "check the lancedb version" once meant
+        # the actual cause — "Native FTS indexes can only be created on a single field
+        # at a time" — had to be reproduced by hand before it could be fixed.
+        why = getattr(store, "last_fts_error", "") or "no reason reported by the store"
+        report.add("store", WARN, detail + f", but the full-text index could not be built: {why}",
+                   "hybrid search will be dense-only until this is fixed")
     elif store.kind == "lancedb" and not text_hits:
         report.add("store", WARN, detail + ", but full-text search returned nothing for a known term",
                    "hybrid search may be degraded; check the lancedb version")

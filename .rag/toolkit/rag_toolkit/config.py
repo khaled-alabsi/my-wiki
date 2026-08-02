@@ -26,6 +26,13 @@ DEFAULTS: dict[str, Any] = {
         "root": "",
         "created": "",
         "toolkit_version": "",
+        # Where the heavy, rebuildable directories physically live: db, state and
+        # the model cache. Empty means "inside .rag/". Set to an absolute path when
+        # the project sits in a file-sync container — see references/cloud-synced-corpora.md.
+        "store": "",
+        # Where the virtualenv lives. Empty means .rag/.venv. Set to an absolute path
+        # (commonly <project>/.venv) so editors pick it up as the project interpreter.
+        "venv": "",
     },
     "sources": [],
     "corpus": {
@@ -93,8 +100,21 @@ def rag_dir_for(project_root: str | os.PathLike[str]) -> Path:
     return Path(project_root).resolve() / RAG_DIR_NAME
 
 
-def layout(rag_dir: Path) -> dict[str, Path]:
-    """Canonical subpaths of a ``.rag`` workspace."""
+def layout(rag_dir: Path, cfg: dict[str, Any] | None = None) -> dict[str, Path]:
+    """Canonical subpaths of a ``.rag`` workspace.
+
+    ``project.store`` and ``project.venv`` relocate the heavy, rebuildable parts
+    outside ``.rag/`` — needed when the project lives in a file-sync container, where
+    gigabytes of model weights and a virtualenv must not sync. Callers that already
+    hold a config should pass it; without one the built-in layout is returned, which
+    is also the correct answer for a workspace that has not been relocated.
+
+    ``db`` and ``state`` always move together. Separating them lets a synced manifest
+    describe a store that is not there, which silently produces an empty index.
+    """
+    project = (cfg or {}).get("project", {})
+    store = Path(project["store"]).expanduser() if project.get("store") else rag_dir
+    venv = Path(project["venv"]).expanduser() if project.get("venv") else rag_dir / ".venv"
     return {
         "root": rag_dir,
         "config": rag_dir / CONFIG_NAME,
@@ -102,14 +122,15 @@ def layout(rag_dir: Path) -> dict[str, Path]:
         "version": rag_dir / "VERSION",
         "docs": rag_dir / "docs",
         "toolkit": rag_dir / "toolkit",
-        "venv": rag_dir / ".venv",
-        "db": rag_dir / "db",
-        "state": rag_dir / "state",
-        "manifest": rag_dir / "state" / "manifest.sqlite",
-        "progress": rag_dir / "state" / "progress.json",
-        "log": rag_dir / "state" / "index.log",
-        "lock": rag_dir / "state" / "index.lock",
-        "cache": rag_dir / "cache" / "models",
+        "venv": venv,
+        "store": store,
+        "db": store / "db",
+        "state": store / "state",
+        "manifest": store / "state" / "manifest.sqlite",
+        "progress": store / "state" / "progress.json",
+        "log": store / "state" / "index.log",
+        "lock": store / "state" / "index.lock",
+        "cache": store / "cache" / "models",
         "notebooks": rag_dir / "notebooks",
         "bin": rag_dir / "bin",
     }

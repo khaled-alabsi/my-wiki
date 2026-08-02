@@ -11,7 +11,10 @@ that. This keeps a stale registry from silently corrupting an index.
 
 from __future__ import annotations
 
+import os
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 # fastembed and sentence-transformers reranking are optional extras; a tier that names
@@ -25,7 +28,7 @@ class EmbeddingModel:
     dimension: int  # advisory; confirmed at load time
     max_tokens: int
     multilingual: bool
-    approx_download_mb: int
+    approx_disk_mb: int
     query_prefix: str = ""
     document_prefix: str = ""
     normalize: bool = True
@@ -38,7 +41,7 @@ class RerankModel:
     id: str
     backend: str  # "fastembed" | "sentence-transformers" | "none"
     multilingual: bool
-    approx_download_mb: int
+    approx_disk_mb: int
     notes: str = ""
 
 
@@ -48,62 +51,62 @@ EMBEDDINGS: dict[str, EmbeddingModel] = {
     # --- ONNX / fastembed: no torch, installs in ~200 MB, CPU-fast, Windows-friendly
     "e5-small-multi": EmbeddingModel(
         id="intfloat/multilingual-e5-small", backend="fastembed", dimension=384,
-        max_tokens=512, multilingual=True, approx_download_mb=470,
+        max_tokens=512, multilingual=True, approx_disk_mb=470,
         query_prefix="query: ", document_prefix="passage: ",
         notes="Default light tier. The query/passage prefixes are required by the e5 family.",
     ),
     "bge-small-en": EmbeddingModel(
         id="BAAI/bge-small-en-v1.5", backend="fastembed", dimension=384,
-        max_tokens=512, multilingual=False, approx_download_mb=130,
+        max_tokens=512, multilingual=False, approx_disk_mb=130,
         query_prefix="Represent this sentence for searching relevant passages: ",
         notes="English-only, smallest sensible option. Query prefix applies to queries only.",
     ),
     "bge-base-en": EmbeddingModel(
         id="BAAI/bge-base-en-v1.5", backend="fastembed", dimension=768,
-        max_tokens=512, multilingual=False, approx_download_mb=420,
+        max_tokens=512, multilingual=False, approx_disk_mb=420,
         query_prefix="Represent this sentence for searching relevant passages: ",
         notes="English-only mid option when torch is unavailable.",
     ),
     # --- sentence-transformers / torch: needs an accelerator to be worth the install
     "e5-base-multi": EmbeddingModel(
         id="intfloat/multilingual-e5-base", backend="sentence-transformers", dimension=768,
-        max_tokens=512, multilingual=True, approx_download_mb=1100,
+        max_tokens=512, multilingual=True, approx_disk_mb=1100,
         query_prefix="query: ", document_prefix="passage: ",
         notes="Default balanced tier. Strong multilingual quality at a modest size.",
     ),
     "e5-large-multi": EmbeddingModel(
         id="intfloat/multilingual-e5-large", backend="sentence-transformers", dimension=1024,
-        max_tokens=512, multilingual=True, approx_download_mb=2200,
+        max_tokens=512, multilingual=True, approx_disk_mb=2200,
         query_prefix="query: ", document_prefix="passage: ",
         notes="Alternative large tier when bge-m3's long context is not needed.",
     ),
     "bge-m3": EmbeddingModel(
         id="BAAI/bge-m3", backend="sentence-transformers", dimension=1024,
-        max_tokens=8192, multilingual=True, approx_download_mb=2300,
+        max_tokens=8192, multilingual=True, approx_disk_mb=4300,
         notes="Default large tier. Long context suits whole-section and page chunks. No prefixes.",
     ),
     # --- hosted, opt-in only
     "openai-3-large": EmbeddingModel(
         id="text-embedding-3-large", backend="api", dimension=3072,
-        max_tokens=8191, multilingual=True, approx_download_mb=0,
+        max_tokens=8191, multilingual=True, approx_disk_mb=0,
         notes="Needs OPENAI_API_KEY. Sends corpus text off the machine — never a default.",
     ),
 }
 
 RERANKERS: dict[str, RerankModel] = {
-    "none": RerankModel(id="", backend="none", multilingual=True, approx_download_mb=0,
+    "none": RerankModel(id="", backend="none", multilingual=True, approx_disk_mb=0,
                         notes="Hybrid fusion only. Always available."),
     "ms-marco-mini": RerankModel(
         id="Xenova/ms-marco-MiniLM-L-6-v2", backend="fastembed", multilingual=False,
-        approx_download_mb=90, notes="ONNX cross-encoder, English. Cheap quality win on CPU.",
+        approx_disk_mb=90, notes="ONNX cross-encoder, English. Cheap quality win on CPU.",
     ),
     "bge-reranker-base": RerankModel(
         id="BAAI/bge-reranker-base", backend="sentence-transformers", multilingual=True,
-        approx_download_mb=1100, notes="Multilingual cross-encoder for the balanced tier.",
+        approx_disk_mb=1100, notes="Multilingual cross-encoder for the balanced tier.",
     ),
     "bge-reranker-v2-m3": RerankModel(
         id="BAAI/bge-reranker-v2-m3", backend="sentence-transformers", multilingual=True,
-        approx_download_mb=2300, notes="Strongest bundled reranker. Large tier only.",
+        approx_disk_mb=2100, notes="Strongest bundled reranker. Large tier only.",
     ),
 }
 
@@ -219,7 +222,7 @@ def select(
             "rerank_backend": reranker.backend,
             "rerank_model": reranker.id,
         },
-        "download_mb": model.approx_download_mb + reranker.approx_download_mb,
+        "disk_mb": model.approx_disk_mb + reranker.approx_disk_mb,
         "notes": notes,
     }
 
@@ -228,6 +231,65 @@ def describe(key_or_id: str) -> EmbeddingModel | None:
     if key_or_id in EMBEDDINGS:
         return EMBEDDINGS[key_or_id]
     return next((m for m in EMBEDDINGS.values() if m.id == key_or_id), None)
+
+
+def prime_offline(cache_dir: str, *model_ids: str) -> bool:
+    """Go offline when every requested model is already in the local cache.
+
+    Loading a cached model still calls the Hub to check freshness. That costs latency,
+    prints an "unauthenticated requests" warning that reads like the corpus is being
+    uploaded, and fails outright with no network — on a tool whose entire premise is
+    that it runs offline. Check the cache first; only allow the network when something
+    genuinely has to be downloaded.
+
+    ``huggingface_hub`` reads its offline flag into a module constant at import time, so
+    setting the environment variable is not enough once it is imported. Patch the live
+    constant too. Returns True when offline mode was engaged.
+    """
+    if not cache_dir or not model_ids:
+        return False
+    root = Path(cache_dir)
+    for model_id in model_ids:
+        if not model_id:
+            continue
+        if not (root / f"models--{model_id.replace('/', '--')}").is_dir():
+            return False  # something is missing — let it download
+
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    for name in ("huggingface_hub.constants", "transformers.utils.hub"):
+        module = sys.modules.get(name)
+        for attr in ("HF_HUB_OFFLINE", "OFFLINE_MODE_IS_ENABLED"):
+            if module is not None and hasattr(module, attr):
+                setattr(module, attr, True)
+    quiet_model_loading()
+    return True
+
+
+def quiet_model_loading() -> None:
+    """Silence loader chatter that a user can do nothing about.
+
+    Two sources, both harmless and both alarming to read on every single search:
+
+    * ``sentence_transformers.util.decorators`` logs "The Transformer ``cache_dir``
+      argument is deprecated" — about **its own** internal call. ``cache_folder`` is the
+      only supported way to point it at a cache, and passing ``config_kwargs`` as the
+      message suggests raises ``TypeError: got multiple values for 'cache_dir'``. So
+      there is nothing to fix at the call site; only the logger can be quietened.
+    * transformers prints a "Loading weights" progress bar. When the weights are already
+      cached that bar reports nothing useful.
+
+    Genuine errors still surface: only these two loggers are lowered, and only to ERROR.
+    """
+    import logging
+
+    logging.getLogger("sentence_transformers.util.decorators").setLevel(logging.ERROR)
+    try:
+        import transformers
+
+        transformers.utils.logging.disable_progress_bar()
+    except Exception:
+        pass
 
 
 def extras_for(backend: str, rerank_backend: str = "none") -> list[str]:

@@ -1,0 +1,4 @@
+{
+  "// note": "The RAG virtualenv lives outside iCloud on purpose. No symlink to it: iCloud Drive cannot sync symlinks and replaces them with empty 'name 2' folders.",
+  "python.defaultInterpreterPath": "/Users/Khaled.Alabsi/.local/share/rag/my-wiki/venv/bin/python"
+}
