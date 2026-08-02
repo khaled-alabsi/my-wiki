@@ -4,7 +4,7 @@ kanban-plugin: list
 
 ## Backlog
 
-- [ ] [[Reorgenise plane]]
+- [ ] [[Reorganise plan]]
 - [ ] [[Understand alternative distributions]]
 	
 	Some deitails

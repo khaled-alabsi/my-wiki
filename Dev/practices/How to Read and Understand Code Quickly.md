@@ -254,6 +254,8 @@ Architecture gives meaning to everything else.
 
 ## 12. Accept Partial Understanding
 
+This is probably the hardest mindset to adopt.
+
 You do **not** need 100% understanding.
 
 Professional developers are comfortable with something like:

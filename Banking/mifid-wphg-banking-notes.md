@@ -2,17 +2,14 @@
 
 ## Table of Contents
 
--   \[\[#MiFID II\|MiFID II\]\]
--   \[\[#WpHG vs MiFID II\|WpHG vs MiFID II\]\]
--   \[\[#Main MiFID Business Processes\|Main MiFID Business
-    Processes\]\]
--   \[\[#Target Market (TaMrA)\|Target Market (TaMrA)\]\]
--   \[\[#Geeignetheitserklärung (GEE)\|Geeignetheitserklärung (GEE)\]\]
--   \[\[#BaFin Registration of Investment Advisors\|BaFin Registration
-    of Investment Advisors\]\]
--   \[\[#Typical End-to-End Advisory Flow\|Typical End-to-End Advisory
-    Flow\]\]
--   \[\[#Developer Perspective\|Developer Perspective\]\]
+- [MiFID II](#MiFID%20II)
+- [WpHG vs MiFID II](#WpHG%20vs%20MiFID%20II)
+- [Main MiFID Business Processes](#Main%20MiFID%20Business%20Processes)
+- [Target Market (TaMrA)](#Target%20Market%20(TaMrA))
+- [Geeignetheitserklärung (GEE)](#Geeignetheitserklärung%20(GEE))
+- [BaFin Registration of Investment Advisors](#BaFin%20Registration%20of%20Investment%20Advisors)
+- [Typical End-to-End Advisory Flow](#Typical%20End-to-End%20Advisory%20Flow)
+- [Developer Perspective](#Developer%20Perspective)
 
 # MiFID II
 
