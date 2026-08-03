@@ -27,6 +27,51 @@
 - Not notes, never indexed: `_utils/` (MCP servers), `Dev/LLM/` (code sandbox),
   `Dev/languages/Python/*.py|.ipynb`, `.tmp/`, `.obsidian/`, `.wiki-index/`.
 
+## Business Glossary
+
+> This vault's own vocabulary, so a term in incoming material resolves before it is filed.
+> Every definition comes from a note in this vault, never from outside knowledge. `(inferred)` marks
+> a meaning derived from usage because no note states it — check those when you have time.
+> `Dev/`, `AI/` and the decomposition folder carry their own local terms in their own indexes.
+
+- **ACT** — Acceptance and Commitment Therapy. One of the evidence-based modalities in the feedback-reactivity plan. → `Work-life/Navigating Feedback From Criticism to Growth.md`
+- **ADHD** — Attention-Deficit/Hyperactivity Disorder. Used here for the emotional-dysregulation and rejection-sensitivity layer, not as a diagnosis. → `Work-life/Navigating Feedback From Criticism to Growth.md`
+- **AVD** (aka FRÜHSTART) — Altersvorsorge Depot. Retirement savings depot; the early-retirement variant admits minors from age 6. Product configuration is gated on holding an active AVD depot. → `Banking/COBA/AVD/AV-ev.md`
+- **BaFin** — the German financial supervisor. Advisors are not personally licensed by it; the bank registers and reports them, and its regulations sit alongside the WpHG under MiFID II. (inferred from usage in 2 notes) → `Banking/mifid-wphg-banking-notes.md`
+- **Basis-Info** — Basic Information Document. Triggers a signature obligation on first capture or update. → `Banking/COBA/AVD/knowledge.md`
+- **BPKenn** (aka BPkenn) — person identifier in COBA, paired with PartyID. Tenant-specific: the same person holds a different BPKenn per country, so it is not a global key. → `Banking/COBA/test-data-mocking.md`
+- **CBT** — Cognitive Behavioral Therapy. The strongest-supported non-pharmacological lever in the adult-ADHD notes; source of the Evidence Trial and Continuum techniques. → `Work-life/Navigating Feedback From Criticism to Growth.md`
+- **COBA** — Commerzbank. Prefix and folder for everything bank-specific, as opposed to generic regulation. → `Banking/COBA/`
+- **Comsidl** — identifier carried on the CORE API request object. `/natural-persons` works without it, `/customer-agreements` requires it, and online channels have none in context. → `Banking/COBA/coba-technical-patterns.md`
+- **CPMS** — external calculation engine for expected state subsidies and promotions; drives PIP content. → `Banking/COBA/AVD/knowledge.md`
+- **CUSUM** — cumulative-sum control chart, run online over a drifting statistic to detect a shift. (inferred from usage in 3 notes) → `PhD/publishable methods framing guide.md`
+- **DBT** — Dialectical Behavior Therapy. Source of the STOP and TIPP skills and the "Check the Facts" protocol. → `Work-life/Navigating Feedback From Criticism to Growth.md`
+- **DocFamily** — the document archiving and retrieval system generated disclosures are written to. → `Banking/COBA/AVD/AV-ev.md`
+- **EI** — Eigentümer. Owner of a customer number; the top entry where two people share one. Contrast VB. → `Banking/COBA/test-data-mocking.md`
+- **Ex-Anton** — Exposé/prospectus. Detailed product offering document generated alongside TIP and GE. → `Banking/COBA/AVD/AV-ev.md`
+- **GE** — **two meanings in this vault, do not resolve one to the other**: Geeignetheitserklärung (suitability declaration, `Banking/COBA/AVD/knowledge.md`) and Gebührenübersicht (fee overview, `Banking/COBA/AVD/AV-ev.md`). → `Banking/COBA/AVD/knowledge.md`
+- **GEE** — Geeignetheitserklärung. Written statement of why a recommendation suits the client. Not to be confused with GE, which also carries a fee-overview meaning. → `Banking/mifid-wphg-banking-notes.md`
+- **GPKENN** — Globale Kennung. Globally unique person identifier, safe where BPKenn is not, but harder to work with. → `Banking/COBA/test-data-mocking.md`
+- **IDV** — the 20 preset disturbances of the TEP benchmark; IDV(8)–IDV(12) inject stochastic process noise. → `PhD/Noise Handling in Statistical and Multivariate Process Monitoring_ A Literature Review.md`
+- **Marktkenntnisse** — product knowledge records. Tracks a customer's prior understanding of specific markets, for suitability documentation. → `Banking/COBA/AVD/knowledge.md`
+- **MiFID II** — the EU directive defining how investment services must be provided. Implemented in Germany mainly through the WpHG; MiFIR is its directly-applicable regulation counterpart. → `Banking/mifid-wphg-banking-notes.md`
+- **MSPC** — Multivariate Statistical Process Control. The `PhD/` folder's whole subject. → `PhD/Noise Handling in Statistical and Multivariate Process Monitoring_ A Literature Review.md`
+- **MYT decomposition** — splits a T² alarm into per-variable contribution scores, so variables can be ranked by how suspicious they look. → `PhD/myt-decomposition.md`
+- **PCA** — principal component analysis. Decomposes X = TP^T + E into a principal subspace (scores → T²) and a residual subspace (SPE/Q); the discarded residual is what MSPC treats as "noise". → `PhD/Noise Handling in Statistical and Multivariate Process Monitoring_ A Literature Review.md`
+- **PIP** — Produktinformationspapier / plan document. Detailed product and subsidy information, calculated in parallel with GE via CPMS. → `Banking/COBA/AVD/knowledge.md`
+- **RSD** — Rejection Sensitive Dysphoria. Treated in these notes as descriptive shorthand, not a settled standalone diagnosis. → `Work-life/Self-help report for unfair invalidation and perceived exploitation at work.md`
+- **SPE** (aka Q) — the residual-subspace statistic, SPE = ||x − x̂||²: reconstruction-error energy left after projection. → `PhD/pca-t2-spe-attribution-methods.md`
+- **SPM** — Statistical Process Monitoring. The broader field MSPC sits inside. → `PhD/Noise Handling in Statistical and Multivariate Process Monitoring_ A Literature Review.md`
+- **STOP / TIPP** — two DBT skills: STOP is the circuit breaker for an automated emotional reaction; TIPP forces parasympathetic activation when flooding is too severe for STOP. → `Work-life/Navigating Feedback From Criticism to Growth.md`
+- **T²** — Hotelling's T². One overall multivariate anomaly score, a Mahalanobis distance in score space. It says *whether* an observation is abnormal, never *which* variable caused it — that is what the decomposition notes are for. → `PhD/hawkins-decomposition-t2-fault-diagnosis.md`
+- **Tamara** — internal COBA target market and suitability data service. **A system, not the regulatory concept** — see TaMrA, which is a different thing. → `Banking/COBA/AVD/knowledge.md`
+- **TaMrA** — Target Market Assessment. The generic MiFID II concept of defining and matching a product's target market. **Not** the Tamara service. → `Banking/mifid-wphg-banking-notes.md`
+- **TEP** — Tennessee Eastman Process. The field's dominant benchmark: 41 measured variables (XMEAS), 12 manipulated (XMV), 20 preset disturbances (IDV), 52 process variables in total. → `PhD/Noise Handling in Statistical and Multivariate Process Monitoring_ A Literature Review.md`
+- **TIP** — TIP-Dokument, Product Information Plan (PRIIPs/KID equivalent). Mandatory pre-contractual disclosure; only its latest version goes downstream. → `Banking/COBA/AVD/AV-ev.md`
+- **VB** — Bevollmächtigter. Authorized representative on a customer number, able to view and modify it. Contrast EI. → `Banking/COBA/test-data-mocking.md`
+- **WBF-E-SAU** (aka Sau) — the core depot/banking system that receives finalized document metadata downstream. → `Banking/COBA/AVD/AV-ev.md`
+- **WpHG** — the German act implementing MiFID II. For a retail bank, most customer-facing MiFID requirements land here. Not a synonym for MiFID II; the vault says so explicitly. → `Banking/mifid-wphg-banking-notes.md`
+
 ## Contents
 
 - `Dev/` - software development across languages, frontend, infra, architecture and practices — see `Dev/index.md` for its 79 notes
@@ -78,7 +123,8 @@
 
 - Place here: Commerzbank-specific banking knowledge — internal systems, APIs, product configurations and processes that only apply to this bank.
 - `Banking/COBA/AVD/AV-ev.md` - sprint refinement extraction for the AVD (Altersvorsorge Depot) advisory and document lifecycle: product configuration, TIP/GE/Ex-Anton generation, DocFamily archiving, WBF-E-SAU handover, Contentful content, eligibility gating
-- `Banking/COBA/AVD/knowledge.md` - business knowledge extraction for the AVD/FRÜHSTART early-retirement savings process: onboarding, suitability, recommendation via Tamara, PIP/GE generation via CPMS, external handover to Sau
+- `Banking/COBA/coba-technical-patterns.md` - COBA implementation patterns: Locale via ApplicationContextProvider.getLocale(), BusinessExceptionCollector exception handling, CORE API Comsidl requirements (natural-persons vs customer-agreements), online-channel technical user
+- `Banking/COBA/test-data-mocking.md` - how to construct mock test data for SEC account numbers, owner group IDs (BPKenn from investor profile), and depot numbers; COBA customer number roles: EI (owner) vs VB (authorized representative); person identification via BPkenn/PartyID/GPKENN
 
 ## Mathematik/
 

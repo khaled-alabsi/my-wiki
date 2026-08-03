@@ -5,6 +5,22 @@
 > Keep this current: run the `wiki` skill in `refresh` mode after adding, moving, or removing notes.
 > A refresh only re-describes what changed.
 
+## Business Glossary
+
+> `Dev/`-local vocabulary, additional to the root `index.md` glossary — not a copy of it.
+> The monolith-decomposition method and metric names have their own glossary in
+> `Dev/architecture/Monolithic decomposition/index.md`.
+> Every definition comes from a note under `Dev/`.
+
+- **CSR** — Client-Side Rendering. The UI is updated in the browser. Contrast SSR. → `Dev/frontend/React JS/01.md`
+- **DDD** — domain-driven design; invoked here for bounded contexts and aggregate boundaries when judging whether a decomposition respects domain lines. (inferred from usage in 6 notes) → `Dev/architecture/Mix Architecture patterns - Infra-Deployment strategies.md`
+- **DSL** — domain-specific language; in this vault, the Kotlin builder/config style used by Gradle and similar tooling. (inferred from usage in 4 notes) → `Dev/languages/Kotlin/0000003 Build Systems.md`
+- **DTO** — Data Transfer Object. A simple object carrying data between layers: fields and accessors only, no business logic. → `Dev/languages/Kotlin/DTO.md`
+- **KMP** — Kotlin Multiplatform. Kotlin's cross-platform mechanism, item 8 of the Kotlin curriculum. → `Dev/languages/Kotlin/0000008 Kotlin Multiplatform KMP.md`
+- **RemoteThemenblock** (aka Themenblock) — a remote micro-frontend bundle that, unlike a traditional remote bundle, **does not render itself**: the host mounts it via `createThemenblockMount(...)` and supplies the rendering context. → `Dev/frontend/Themenblock.md`
+- **Skia** — 2D graphics rendering library behind Flutter and Chromium; reached from React Native through `@shopify/react-native-skia`. → `Dev/frontend/Skia-React-Native/101.md`
+- **SSR** — Server-Side Rendering. Pages are rendered on the server for faster load. Contrast CSR. → `Dev/frontend/React JS/01.md`
+
 ## Contents
 
 - `Dev/architecture/` - architecture patterns, spec format, and monolith-to-microservice decomposition research
