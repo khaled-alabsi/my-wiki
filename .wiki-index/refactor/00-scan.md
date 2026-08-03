@@ -1,9 +1,64 @@
-# 00 — Scan
+# 00 — Scan (second pass)
+
+Run date: 2026-08-02. Scope: whole vault. Vault type: Obsidian, profile `my-wiki` active.
+Baseline commit: `97e36c5` (clean tree). Prior refactor completed same day at `76feaae` — this pass
+checks for drift since then; supersedes the first-pass scan below for resume purposes.
+
+## Inventory
+
+- ~150 markdown notes across 10 top-level folders (`Dev/ AI/ Banking/ Dairy/ Excalidraw/ Kanban/
+  Mathematik/ PhD/ Quick note/ Work-life/`); `.rag/` and `_utils/` are tooling, not notes, excluded.
+- Folder structure unchanged since `76feaae` (5 `Dev/` groups, merged/renamed files from that pass
+  all present and correct).
+
+## Link graph
+
+Re-grepped all `[[...]]` across the vault (~260 matches, same order of magnitude as the first pass).
+Still effectively no real note-to-note link graph. Only 2 live wikilinks in the whole vault, both in
+`Kanban/PhD.md`:
+
+- `[[Reorganise plan]]` (line 7) — broken, **new** since `76feaae` (see Finding 1)
+- `[[Understand alternative distributions]]` (line 8) — broken, pre-existing, already surfaced and
+  left ambiguous by the first pass (`04-operations.md:123`); still no target
+- Plus 2 pre-existing broken `[[Stuff]]` refs in `Excalidraw/Drawing 2026-07-20 00.46.12.excalidraw.md`
+  (target in `.trash/`), also already left ambiguous by the first pass
+
+All other matches are intra-note TOC anchors, Python/JS list literals in code fences, or convention
+docs (`index.md`, `AGENTS.md`, `.rag/docs/*`) — not real links.
+
+## Findings — hygiene (no structural findings this pass)
+
+1. **Dead index entry + broken link, Kanban/** — root `index.md`'s `## Kanban/` section lists
+   `Kanban/Reorganise plan.md`; file does not exist on disk. `Kanban/PhD.md:7` links
+   `[[Reorganise plan]]` to the same nonexistent file.
+   Root cause, verified via git history: source was `Kanban/Reorgenise plane.md`, a 0-byte
+   placeholder since commit `0e8c818`. The `76feaae` refactor commit deleted it
+   (`D Kanban/Reorgenise plane.md`, 0 insertions/deletions); the rename to `Reorganise plan.md`
+   recorded `[done]` in that run's `04-operations.md:96` never actually landed. No content loss —
+   source was empty.
+
+2. **Pre-existing broken links, unchanged** — `[[Understand alternative distributions]]` and
+   `[[Stuff]]` ×2 remain ambiguous, no valid target. Already reported by the first pass. No action;
+   re-reported only, per `operations.md` phase 8 ("ambiguous → leave and report").
+
+3. **Stale count, `Dev/index.md:29`** — states `Dev/frontend/Skia-React-Native/` has "16 notes";
+   actual is 17 (`find`-verified).
+
+4. **Stale manifest** — `.wiki-index/manifest.json` (`scanned_at: 2026-08-02T13:25:00Z`,
+   `file_count: 152`) predates `76feaae` and does not reflect the current tree.
+
+No territorial findings. Protected paths (`Dairy/`, `Excalidraw/`, `Kanban/`,
+`Dev/architecture/.../Archive/`, `_utils/`, `Dev/LLM/`, `.tmp/`, `.obsidian/`, `.trash/`,
+`.wiki-index/`) are untouched by every finding above.
+
+---
+
+## First-pass scan (2026-08-02, baseline `93c89c7`) — kept for history
 
 Run date: 2026-08-02. Scope: whole vault. Vault type: Obsidian (`.obsidian/` present, wikilink syntax).
 Baseline commit: `93c89c7`.
 
-## Inventory
+### Inventory
 
 - 146 markdown notes (excluding `.trash/`, `.wiki-index/`)
 - Top-level areas: `AI/` 15, `Banking/` 4, `Dev/` 97, `Excalidraw/` 2, `Kanban/` 2, `Mathematik/` 1,
@@ -13,7 +68,7 @@ Baseline commit: `93c89c7`.
 - Largest notes: `Dev/Kotlin/0000008 Kotlin Multiplatform KMP.md` 2035, `…/Archive/domain-skeleton-…-benchmark-plan.md` 1881,
   `Mathematik/vector-products-notes.md` 1850, `…/java-ee-monolith-knowledge-gaps-book.md` 1827
 
-## Link graph
+### Link graph
 
 **The vault has effectively no link graph.** Of ~256 `[[...]]` matches:
 
@@ -31,7 +86,7 @@ None are link targets, so none are live problems.
 
 Frontmatter: 3 of 146 files. Not a convention — do not add it.
 
-## Findings — structural
+### Findings — structural
 
 - **S1** `Banking/COBA/AVD/knowledge.md` is byte-identical to `Banking/AV/AV-refiment.md` (md5 `28912ec51d5d31cb1ca23aec9bf3b0e0`).
 - **S2** `Dev/Read/Untitled.md` (346 lines, no H1) is an earlier take on `Dev/How to Read and Understand Code Quickly.md` (302 lines). 42 lines shared, 93 unique to Untitled.
@@ -46,7 +101,7 @@ Frontmatter: 3 of 146 files. Not a convention — do not add it.
 - **S11** Code and binaries stored as vault content: `Dev/Python/` (3 `.py`, 2 `.ipynb`, `key.txt`), `Dev/LLM/src/` + 5 notebooks + `requirements.txt` + 8 `.md.pdf`, `AI/opencode.json`, `Quick note/OS/models.json`, `_utils/`, `.tmp/`.
 - **S12** `Dev/Monolithic decomposition/java-ee-monolith-knowledge-gaps-book.md` is a Java EE learning book, not decomposition research — misfiled inside a research folder.
 
-## Findings — hygiene
+### Findings — hygiene
 
 - **H1** `Dev/Skia-React-Native/013 Skia with react-native-gesture-handler and react-native-reanimated` has **no `.md` extension** — invisible to Obsidian.
 - **H2** `AI/Transformer/LLM-Fine-Tuning.md.md` — double extension.
@@ -57,7 +112,7 @@ Frontmatter: 3 of 146 files. Not a convention — do not add it.
 - **H7** Tracked junk: 4 `.DS_Store`, 2 `_utils/*.pyc`, 2 `*.log`.
 - **H8** **`Dev/Python/key.txt` (24 bytes) and `.tmp/.env.zip` are committed to git.** Reported, not actioned — out of scope for a notes refactor.
 
-## Findings — index conflicts
+### Findings — index conflicts
 
 - **I1** `Banking/stuff.md` listed in root index; does not exist (a `Stuff.md` sits in `.trash/`).
 - **I2** `Mathematik/Vector and Matrix Multiplication Notes.md` listed; actual file is `vector-products-notes.md`.
@@ -67,7 +122,7 @@ Frontmatter: 3 of 146 files. Not a convention — do not add it.
 - **I6** `Dev/index.md` has no `Place here:` line for any of its 19 subfolders — routing dead-ends.
 - **I7** `Banking/` section describes `Banking/AV/` but lists neither of its two files.
 
-## Config constraints discovered
+### Config constraints discovered
 
 These override any structural instinct and are recorded because they are not visible from the note tree:
 

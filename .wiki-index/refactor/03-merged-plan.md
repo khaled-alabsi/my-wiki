@@ -1,8 +1,47 @@
-# 03 — Merged plan
+# 03 — Merged plan (second pass)
+
+Single unit this run (`index-and-link-hygiene`), so reconciliation is trivial — no conflicts to
+resolve. Awaiting user acceptance (step 5) as of this writing.
+
+## Operations (execution order per `operations.md`)
+
+1. **LINK** `Kanban/PhD.md` — remove the dead `[[Reorganise plan]]` reference (line 7)
+2. **EDIT** `index.md` — drop the dead `Kanban/Reorganise plan.md` entry from `## Kanban/`
+3. **EDIT** `Dev/index.md` — correct Skia-React-Native count, 16 → 17
+4. **REGEN** `.wiki-index/manifest.json` — full rescan against current tree
+
+## Not changing
+
+- `[[Understand alternative distributions]]` (`Kanban/PhD.md:8`) and `[[Stuff]]` ×2
+  (`Excalidraw/Drawing 2026-07-20 00.46.12.excalidraw.md`) — left as pre-existing ambiguous broken
+  links, re-reported only; unchanged from the first pass's decision.
+- All folder structure, naming, and frontmatter — unchanged; no drift found since `76feaae`.
+
+## Open decisions
+
+None.
+
+## Global effects (threshold cascade)
+
+None — no folder is created, emptied, or crosses the ~15-file split threshold this run.
+
+## Protected — no operation touches these
+
+`Dairy/`, `Excalidraw/`, `Kanban/` (other than the one line edit above), `Dev/architecture/.../Archive/`,
+`_utils/`, `Dev/LLM/`, `.tmp/`, `.obsidian/`, `.trash/`, `.wiki-index/` (other than the manifest
+regen and this run's own artifacts) — per the `my-wiki` profile.
+
+## Undo
+
+Repo clean at HEAD `97e36c5`. Undo command: `git -C "<vault>" reset --hard 97e36c5`
+
+---
+
+## First-pass merged plan (2026-08-02) — kept for history
 
 Accepted by the user on 2026-08-02. This file is what execution reads.
 
-## Note on the artifact trail
+### Note on the artifact trail
 
 `01-meta-plan.md` and the `02-plan-<unit>.md` sub-plans were **not** written, and are deliberately not
 registered anywhere. The decomposition-then-reconcile pipeline exists to make planning feasible when a
@@ -10,7 +49,7 @@ vault is too large to hold in one pass; here the plan was derived, presented, ch
 interactively with the user across four rounds before acceptance, so that stage was performed in
 conversation rather than on disk. A resumed run should read this file and `04-operations.md` only.
 
-## Decisions the user settled during planning
+### Decisions the user settled during planning
 
 1. Regroup `Dev/`'s 19 flat subfolders into 5 areas, and fix everything broken.
 2. **`PhD/` is MSPC-only.** Monolith-decomposition research nests into `Dev/architecture/` instead.
@@ -26,7 +65,7 @@ conversation rather than on disk. A resumed run should read this file and `04-op
 8. `Dev/Read/Untitled.md` merges into `How to Read and Understand Code Quickly.md` under a labelled
    section, then goes to trash.
 
-## Global effects (threshold cascade, computed after all moves)
+### Global effects (threshold cascade, computed after all moves)
 
 - `Dev/` drops from 92 to 78 content notes; still needs `Dev/index.md`.
 - `Mathematik/` rises from 1 to 14 notes — under the ~15 threshold, so it stays inline in the root index.
@@ -43,7 +82,7 @@ conversation rather than on disk. A resumed run should read this file and `04-op
   excluded from the index rather than deleted.
 - No note ends up orphaned that wasn't already: the vault has no link graph to break.
 
-## Protected — no operation may touch these
+### Protected — no operation may touch these
 
 - `Dairy/` — `.obsidian/daily-notes.json` points at it. Empty, and stays.
 - `Excalidraw/` — the Excalidraw plugin's configured folder.
@@ -52,7 +91,7 @@ conversation rather than on disk. A resumed run should read this file and `04-op
 - All `.py`, `.ipynb`, `.json`, `requirements.txt`, `_utils/`, `.tmp/` — moved only when their parent
   folder moves; never opened, never edited.
 
-## Left alone deliberately
+### Left alone deliberately
 
 - 2 broken wikilinks (`[[Stuff]]` ×2, `[[Understand alternative distributions]]`) — ambiguous targets;
   guessing would create a wrong link where there is an obviously broken one.
@@ -60,7 +99,7 @@ conversation rather than on disk. A resumed run should read this file and `04-op
   git history is destructive and outside this mode's scope.
 - Tracked `.DS_Store`, `*.pyc`, `*.log` — reported, not actioned.
 
-## Body-text edits
+### Body-text edits
 
 Exactly one: `Banking/mifid-wphg-banking-notes.md` lines 5–16 (the TOC). Any other body diff at the end
 of the run is a defect and a stop condition.
