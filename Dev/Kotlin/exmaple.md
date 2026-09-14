@@ -1,0 +1,335 @@
+Here’s a **Spring Boot REST API example in Kotlin** with **best practices** for:
+
+1. **REST Controller**
+2. **Service Layer**
+3. **Mapping Class**
+4. **API Client Class**
+5. **Tests for all Layers**
+
+---
+
+### **Project Structure**
+
+```
+src/main/kotlin/com/example/demo/
+├── controller/
+│   └── UserController.kt
+├── service/
+│   └── UserService.kt
+├── client/
+│   └── UserApiClient.kt
+├── dto/
+│   ├── UserDto.kt
+│   ├── UserRequest.kt
+│   └── UserResponse.kt
+├── mapper/
+│   └── UserMapper.kt
+└── tests/
+    ├── UserControllerTest.kt
+    ├── UserServiceTest.kt
+    └── UserApiClientTest.kt
+```
+
+---
+
+### **1. User REST Controller**
+
+This handles HTTP requests and delegates business logic to the service layer.
+
+**`UserController.kt`:**
+```kotlin
+package com.example.demo.controller
+
+import com.example.demo.dto.UserRequest
+import com.example.demo.dto.UserResponse
+import com.example.demo.service.UserService
+import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.*
+
+@RestController
+@RequestMapping("/api/users")
+class UserController(private val userService: UserService) {
+
+    @GetMapping
+    fun getAllUsers(): ResponseEntity<List<UserResponse>> {
+        val users = userService.getAllUsers()
+        return ResponseEntity.ok(users)
+    }
+
+    @GetMapping("/{id}")
+    fun getUserById(@PathVariable id: Long): ResponseEntity<UserResponse> {
+        val user = userService.getUserById(id)
+        return ResponseEntity.ok(user)
+    }
+
+    @PostMapping
+    fun createUser(@RequestBody request: UserRequest): ResponseEntity<UserResponse> {
+        val createdUser = userService.createUser(request)
+        return ResponseEntity.ok(createdUser)
+    }
+}
+```
+
+---
+
+### **2. User Service**
+
+The service contains the business logic and communicates with the API client and mapping classes.
+
+**`UserService.kt`:**
+```kotlin
+package com.example.demo.service
+
+import com.example.demo.client.UserApiClient
+import com.example.demo.dto.UserRequest
+import com.example.demo.dto.UserResponse
+import com.example.demo.mapper.UserMapper
+import org.springframework.stereotype.Service
+
+@Service
+class UserService(
+    private val userApiClient: UserApiClient,
+    private val userMapper: UserMapper
+) {
+
+    fun getAllUsers(): List<UserResponse> {
+        val users = userApiClient.fetchAllUsers()
+        return users.map { userMapper.toResponse(it) }
+    }
+
+    fun getUserById(id: Long): UserResponse {
+        val user = userApiClient.fetchUserById(id)
+        return userMapper.toResponse(user)
+    }
+
+    fun createUser(request: UserRequest): UserResponse {
+        val user = userMapper.fromRequest(request)
+        val createdUser = userApiClient.createUser(user)
+        return userMapper.toResponse(createdUser)
+    }
+}
+```
+
+---
+
+### **3. User API Client**
+
+This class handles communication with external APIs.
+
+**`UserApiClient.kt`:**
+```kotlin
+package com.example.demo.client
+
+import com.example.demo.dto.UserDto
+import org.springframework.stereotype.Component
+import org.springframework.web.client.RestTemplate
+import org.springframework.web.client.getForObject
+import org.springframework.web.client.postForObject
+
+@Component
+class UserApiClient(private val restTemplate: RestTemplate) {
+
+    fun fetchAllUsers(): List<UserDto> {
+        return restTemplate.getForObject("http://external-api.com/users") ?: emptyList()
+    }
+
+    fun fetchUserById(id: Long): UserDto {
+        return restTemplate.getForObject("http://external-api.com/users/$id")
+            ?: throw RuntimeException("User not found")
+    }
+
+    fun createUser(user: UserDto): UserDto {
+        return restTemplate.postForObject("http://external-api.com/users", user)
+            ?: throw RuntimeException("Failed to create user")
+    }
+}
+```
+
+---
+
+### **4. User DTOs**
+
+Data Transfer Objects for communication between layers.
+
+**`UserDto.kt`:**
+```kotlin
+package com.example.demo.dto
+
+data class UserDto(
+    val id: Long?,
+    val name: String,
+    val email: String
+)
+```
+
+**`UserRequest.kt`:**
+```kotlin
+package com.example.demo.dto
+
+data class UserRequest(
+    val name: String,
+    val email: String
+)
+```
+
+**`UserResponse.kt`:**
+```kotlin
+package com.example.demo.dto
+
+data class UserResponse(
+    val id: Long,
+    val name: String,
+    val email: String
+)
+```
+
+---
+
+### **5. User Mapper**
+
+Handles conversions between `UserDto`, `UserRequest`, and `UserResponse`.
+
+**`UserMapper.kt`:**
+```kotlin
+package com.example.demo.mapper
+
+import com.example.demo.dto.UserDto
+import com.example.demo.dto.UserRequest
+import com.example.demo.dto.UserResponse
+import org.springframework.stereotype.Component
+
+@Component
+class UserMapper {
+
+    fun toResponse(dto: UserDto): UserResponse {
+        return UserResponse(
+            id = dto.id ?: throw RuntimeException("User ID missing"),
+            name = dto.name,
+            email = dto.email
+        )
+    }
+
+    fun fromRequest(request: UserRequest): UserDto {
+        return UserDto(
+            id = null, // ID is generated by the external API
+            name = request.name,
+            email = request.email
+        )
+    }
+}
+```
+
+---
+
+### **6. Tests**
+
+---
+
+#### **6.1 User Controller Test**
+
+**`UserControllerTest.kt`:**
+```kotlin
+package com.example.demo.tests
+
+import com.example.demo.dto.UserRequest
+import com.example.demo.dto.UserResponse
+import com.example.demo.service.UserService
+import org.junit.jupiter.api.Test
+import org.mockito.Mockito.*
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.post
+import org.springframework.http.MediaType
+
+@WebMvcTest
+class UserControllerTest(@Autowired val mockMvc: MockMvc) {
+
+    @MockBean
+    private lateinit var userService: UserService
+
+    @Test
+    fun `GET all users`() {
+        `when`(userService.getAllUsers()).thenReturn(listOf(UserResponse(1, "John", "john@example.com")))
+
+        mockMvc.get("/api/users")
+            .andExpect { status { isOk() } }
+            .andExpect { jsonPath("$[0].name") { value("John") } }
+    }
+
+    @Test
+    fun `POST create user`() {
+        val request = UserRequest("John", "john@example.com")
+        val response = UserResponse(1, "John", "john@example.com")
+        `when`(userService.createUser(request)).thenReturn(response)
+
+        mockMvc.post("/api/users") {
+            contentType = MediaType.APPLICATION_JSON
+            content = """{"name": "John", "email": "john@example.com"}"""
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(1) }
+        }
+    }
+}
+```
+
+---
+
+#### **6.2 User Service Test**
+
+**`UserServiceTest.kt`:**
+```kotlin
+package com.example.demo.tests
+
+import com.example.demo.client.UserApiClient
+import com.example.demo.dto.UserDto
+import com.example.demo.dto.UserRequest
+import com.example.demo.mapper.UserMapper
+import com.example.demo.service.UserService
+import org.junit.jupiter.api.Test
+import org.mockito.Mockito.*
+
+class UserServiceTest {
+
+    private val apiClient = mock(UserApiClient::class.java)
+    private val mapper = UserMapper()
+    private val service = UserService(apiClient, mapper)
+
+    @Test
+    fun `should fetch all users`() {
+        `when`(apiClient.fetchAllUsers()).thenReturn(listOf(UserDto(1, "John", "john@example.com")))
+
+        val result = service.getAllUsers()
+        assert(result.size == 1)
+        assert(result[0].name == "John")
+    }
+}
+```
+
+---
+
+#### **6.3 User API Client Test**
+
+**`UserApiClientTest.kt`:**
+```kotlin
+package com.example.demo.tests
+
+import com.example.demo.client.UserApiClient
+import org.junit.jupiter.api.Test
+import org.springframework.web.client.RestTemplate
+
+class UserApiClientTest {
+
+    private val restTemplate = mock(RestTemplate::class.java)
+    private val apiClient = UserApiClient(restTemplate)
+
+    @Test
+    fun `should fetch user by ID`() {
+        // Mock response and test the client
+    }
+}
+```
+
+---

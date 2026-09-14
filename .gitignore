@@ -5,3 +5,5 @@ _utils/mcp_server.log
 # Machine-specific: it would resolve to a path that does not exist on another Mac.
 # Recreate it with: bash .rag/bootstrap.sh
 /.venv
+**/.DS_Store
+.DS_Store
