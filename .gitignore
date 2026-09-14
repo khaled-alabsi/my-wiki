@@ -7,3 +7,10 @@ _utils/mcp_server.log
 /.venv
 **/.DS_Store
 .DS_Store
+.wiki/memory_local.md
+.wiki/graph.sqlite
+.wiki/manifest.json
+.wiki/.trash/
+.wiki/ui-assets/
+.input/*
+!.input/.gitkeep

@@ -71,6 +71,19 @@
 - **VB** — Bevollmächtigter. Authorized representative on a customer number, able to view and modify it. Contrast EI. → `Banking/COBA/test-data-mocking.md`
 - **WBF-E-SAU** (aka Sau) — the core depot/banking system that receives finalized document metadata downstream. → `Banking/COBA/AVD/AV-ev.md`
 - **WpHG** — the German act implementing MiFID II. For a retail bank, most customer-facing MiFID requirements land here. Not a synonym for MiFID II; the vault says so explicitly. → `Banking/mifid-wphg-banking-notes.md`
+- **MnC** *(inferred)* — the mapper-and-converter layer in a Coba service: sits between the process
+  layer and an API client, maps DTOs, and is where a soft failure returns an empty result rather than
+  propagating. Used throughout `Banking/COBA/`. → [[coba-technical-patterns]]
+- **VV-Flex** *(inferred)* — a product variant (Efficient / Exclusive) that the AVD document flow
+  branches on before rendering and persisting. → `Banking/COBA/AVD/`
+- **FoSCI** — an evolutionary multi-objective microservice-extraction method (Jin et al., ICWS 2018 /
+  TSE 2021), derived from Mancoridis' Bunch MQ; contributes the search skeleton other methods build
+  on. → `Dev/architecture/Monolithic decomposition/`
+- **CARGO** — a monolith-decomposition method (Nitin et al.) that works from a program graph;
+  contrasted in the vault with CO-GCN/MAGNET, which use no GNN. → `Dev/architecture/Monolithic decomposition/`
+- **NSGA-II / NSGA-III** — the Pareto multi-objective genetic algorithm used as the search engine in
+  several decomposition papers: fast non-dominated sort, crowding distance, uniform crossover on
+  integer cluster labels. → `Dev/architecture/Monolithic decomposition/`
 
 ## Contents
 
@@ -88,11 +101,15 @@
 ## Dev/
 
 - Place here: software development — programming languages, frontend frameworks, infrastructure and CI, architecture and decomposition research, and general engineering practice.
-- `Dev/index.md` for its 79 notes across 5 groups.
+- `Dev/index.md` for its 79 notes across 5 groups — `architecture/`, `frontend/`, `infra/`, `languages/`, `practices/`. **Route everything through those five.**
+- `Dev/LLM/` - a code sandbox, not a notes folder: scratch source, prompts, and the `Dot product_2025-03-09/` and `machine learning/` experiment dirs, which duplicate `Mathematik/dot-product/` and `Mathematik/ml-foundations/`
+- `Dev/wk/` - 2 notes; folder name gives no routing rule
+- **Also present, outside the five groups**: flat copies of `Kotlin/`, `React JS/`, `React-Native/`, `Skia-React-Native/`, `TeamCity/`, `elastic stack/`, `openshift/`, `Monolithic decomposition/`, plus `Architect/`, `JS/`, `Java/`, `Python/`, `Read/`, `Spec/`, `Microfrontend/`, `redux/`. These hold the same material as the grouped copies and have diverged from them by a few notes each. Nothing routes here.
 
 ## AI/
 
 - Place here: AI and deep learning — transformer internals, LLM fine-tuning (LoRA/QLoRA), PyTorch, Hugging Face, tokenizers. Note that `Dev/LLM/` is a code sandbox, not an AI notes folder.
+- `AI/tourch/` - one PyTorch note; the folder name is a typo of `torch` and `AI/Transformer/` already covers PyTorch
 - `AI/index.md` for its 14 notes.
 
 ## PhD/
@@ -119,12 +136,14 @@
   - `# Typical End-to-End Advisory Flow` - the advisory journey start to finish
   - `# Developer Perspective` - what all this means when implementing it
 
+- `Banking/germany-banking-product-information-suitability-note.md` - product information documents and suitability assessment in German retail banking. A same-named copy sits in `Banking/COBA/`; this is the generic one
+- `Banking/stuff.md` - business knowledge extraction for an early retirement savings and advisory domain. Name says nothing about its contents
+- `Banking/AV/` - the AV product area: `AV-refiment.md` (sprint refinement extraction) and `AV-ev.md` (reconstructed business analysis of Track 7). Both have near-copies under `Banking/COBA/AVD/`
+
 ### Banking/COBA/
 
 - Place here: Commerzbank-specific banking knowledge — internal systems, APIs, product configurations and processes that only apply to this bank.
-- `Banking/COBA/AVD/AV-ev.md` - sprint refinement extraction for the AVD (Altersvorsorge Depot) advisory and document lifecycle: product configuration, TIP/GE/Ex-Anton generation, DocFamily archiving, WBF-E-SAU handover, Contentful content, eligibility gating
-- `Banking/COBA/coba-technical-patterns.md` - COBA implementation patterns: Locale via ApplicationContextProvider.getLocale(), BusinessExceptionCollector exception handling, CORE API Comsidl requirements (natural-persons vs customer-agreements), online-channel technical user
-- `Banking/COBA/test-data-mocking.md` - how to construct mock test data for SEC account numbers, owner group IDs (BPKenn from investor profile), and depot numbers; COBA customer number roles: EI (owner) vs VB (authorized representative); person identification via BPkenn/PartyID/GPKENN
+- **71 notes — see [Banking/COBA/index.md](Banking/COBA/index.md)** for the identity model, AVD, technical patterns and the 56 generated chain traces.
 
 ## Mathematik/
 
