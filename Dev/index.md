@@ -28,6 +28,7 @@
 - `Dev/infra/` - CI, container platforms, log/metric pipelines, certificates and application security
 - `Dev/languages/` - language reference notes: Kotlin, Java, JavaScript, Python
 - `Dev/practices/` - general engineering practice, independent of any language or framework
+- `Dev/tools/` - editor and development-machine configuration
 - `Dev/LLM/` - **not notes.** A Python/notebook sandbox (`src/`, `*.ipynb`, `requirements.txt`). Never indexed; its math notes moved to `Mathematik/`.
 
 ## Dev/architecture/
@@ -42,7 +43,7 @@
 - Place here: anything rendered in a browser or a mobile view — React, React Native, Skia canvas graphics, Redux state, micro-frontend integration.
 - `Dev/frontend/React JS/` - React fundamentals, DOM handling, ejecting from Create React App
 - `Dev/frontend/React-Native/` - React Native development, including iOS and Android specifics
-- `Dev/frontend/Skia-React-Native/` - Skia graphics on React Native: components, shapes, animations, shaders — see `Dev/frontend/Skia-React-Native/index.md` for its 16 notes
+- `Dev/frontend/Skia-React-Native/` - Skia graphics on React Native: components, shapes, animations, shaders — see `Dev/frontend/Skia-React-Native/index.md` for its 17 notes
 - `Dev/frontend/Redux_Toolkit_Notes.md` - Redux Toolkit: slices, store setup, async state
 - `Dev/frontend/Themenblock.md` - RemoteThemenblock vs a traditional remote JavaScript bundle: who owns rendering, and what the host application must provide
 
@@ -125,3 +126,9 @@
   - `## 9. Find the Important Nouns` - the few central domain objects everything revolves around
   - `## 12. Accept Partial Understanding` - why insisting on 100% comprehension is a time sink
   - `# My Code Reading Algorithm` - the six-step order for opening an unfamiliar project
+  - `## Original capture — lines not carried over` - sentences from the raw capture this note was shaped from, folded in during the 2026-09-20 refactor
+
+## Dev/tools/
+
+- Place here: configuration for the editor and the development machine itself — IDE settings, terminal and OS-level fixes that only matter while developing. Not engineering practice (that is `Dev/practices/`), and not deployment or CI infrastructure (that is `Dev/infra/`).
+- `Dev/tools/VS Code configs.md` - VS Code on macOS failing to reach devices on the local network from the integrated terminal, and the `defaults write com.apple.network.local-network` fix for Wi-Fi and Ethernet

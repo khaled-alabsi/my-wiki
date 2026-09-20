@@ -87,7 +87,7 @@
 
 ## Contents
 
-- `Dev/` - software development across languages, frontend, infra, architecture and practices — see `Dev/index.md` for its 79 notes
+- `Dev/` - software development across languages, frontend, infra, architecture, practices and tooling — see `Dev/index.md` for its 73 notes
 - `AI/` - transformer architecture, LLM fine-tuning, PyTorch — see `AI/index.md` for its 14 notes
 - `PhD/` - MSPC research: multivariate statistical process control and fault diagnosis
 - `Banking/` - MiFID II/WpHG regulation, and Commerzbank-specific advisory domain knowledge
@@ -100,11 +100,9 @@
 
 ## Dev/
 
-- Place here: software development — programming languages, frontend frameworks, infrastructure and CI, architecture and decomposition research, and general engineering practice.
-- `Dev/index.md` for its 79 notes across 5 groups — `architecture/`, `frontend/`, `infra/`, `languages/`, `practices/`. **Route everything through those five.**
+- Place here: software development — programming languages, frontend frameworks, infrastructure and CI, architecture and decomposition research, general engineering practice, and editor/tooling configuration.
+- `Dev/index.md` for its 73 notes across 6 groups — `architecture/`, `frontend/`, `infra/`, `languages/`, `practices/`, `tools/`. **Route everything through those six.**
 - `Dev/LLM/` - a code sandbox, not a notes folder: scratch source, prompts, and the `Dot product_2025-03-09/` and `machine learning/` experiment dirs, which duplicate `Mathematik/dot-product/` and `Mathematik/ml-foundations/`
-- `Dev/wk/` - 2 notes; folder name gives no routing rule
-- **Also present, outside the five groups**: flat copies of `Kotlin/`, `React JS/`, `React-Native/`, `Skia-React-Native/`, `TeamCity/`, `elastic stack/`, `openshift/`, `Monolithic decomposition/`, plus `Architect/`, `JS/`, `Java/`, `Python/`, `Read/`, `Spec/`, `Microfrontend/`, `redux/`. These hold the same material as the grouped copies and have diverged from them by a few notes each. Nothing routes here.
 
 ## AI/
 

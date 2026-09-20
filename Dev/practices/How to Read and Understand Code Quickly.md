@@ -303,3 +303,39 @@ Reading code works the same way.
 Your goal is not to understand everything.
 
 Your goal is to understand **only the path that answers your current question.**
+
+---
+
+## Original capture — lines not carried over
+
+> Verbatim from the raw capture this note was shaped from, folded in 2026-09-20 during the
+> `Dev/` refactor so nothing was lost when the capture was trashed.
+
+- Yes. The biggest difference between developers who read code quickly and those who don’t is not speed-reading. It’s knowing what to ignore.
+- Here are the techniques that have the highest impact.
+- Don’t look at code as thousands of lines.
+- 3. Ignore implementation first
+- Don’t open calculateRisk() immediately.
+- Only dive inside if you actually need it.
+- - Where does data come from?
+- Replace the whole block with
+- 6. Learn to recognise patterns
+- After enough experience you’ll instantly recognise
+- Instead of reading 500 lines you think
+- “Oh, that’s just a Strategy.”
+- Pattern recognition is the biggest speed boost.
+- Data flow is usually easier than call flow.
+- Many people spend 30 minutes reading helper functions they never needed.
+- Every project has a few central objects.
+- Everything else revolves around them.
+- That usually reveals the business rule.
+- Architecture gives context.
+- Professionals are often comfortable with something like:
+- My favourite reading algorithm
+- 1. What is the entry point?
+- 2. What is the request or event?
+- 3. Which major objects move through the system?
+- 4. Which component makes the main decisions?
+- 5. Where is the output produced?
+- 6. Only then read the implementation of the interesting parts.
+- This usually lets me understand a new feature in minutes rather than hours.

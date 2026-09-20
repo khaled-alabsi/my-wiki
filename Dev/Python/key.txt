@@ -1,1 +1,0 @@
-See .env: OPENAI_API_KEY
