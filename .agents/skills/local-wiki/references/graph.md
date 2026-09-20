@@ -80,6 +80,8 @@ $G query --backlinks <path> --json
 $G query --path-between <a> <b> --max-hops 4 --json     # how are these two connected
 $G query --type regulates [--from <path>] --json        # everything of one relation type
 $G query --concept PSD2 --json                          # notes defining or mentioning a term
+$G query --tag regulation/mifid --json                  # notes under a tag node and all below it
+$G query --tag-tree [regulation] --json                 # one level of the tag tree, with counts
 $G query --components --json                            # disconnected islands
 $G query --orphans | --hubs | --broken | --oneway
 $G query --neighbors <path> --as-of 2024-06-01          # the vault as it stood then
@@ -110,6 +112,15 @@ which note defines a term, which notes use it. Nothing is authored into the stor
 `query --concept <term>` returns the defining note and every note that mentions it, with `defined-in`
 distinguished from `mentions`. A term with no defining note is `inferred`, which is the same status
 `references/glossary.md` uses and means the same thing: nobody has confirmed it.
+
+Tags are nodes as well, and they form a **tree**: `regulation/mifid` sits under `regulation`, and a
+note under a child is under every ancestor. `query --tag <node>` returns the notes of the node and
+everything below it, one row per note, naming the tag that put it there. `query --tag-tree [<node>]`
+returns one level of children, each with the notes under it, the notes carrying it directly, how
+many children it has, its meaning, and whether the vault's inventory lists it. Walk the tree a
+level at a time; that is what keeps a large tree out of context. Both honour `--as-of` and
+`--limit`. The tables are rebuilt whole on every scan, like the concepts, and `scripts/tags.py` is
+the only thing that writes a tag (`references/tagging.md`).
 
 ## Seeing it — `serve.py`
 

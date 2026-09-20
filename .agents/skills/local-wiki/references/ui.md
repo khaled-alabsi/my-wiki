@@ -1,5 +1,7 @@
 # The wiki UI — `scripts/serve.py`
 
+**The UI is for the person; the MCP server is for a remote agent.** They are two surfaces on one vault and neither substitutes for the other: a page is opened and read, a tool is called and its result parsed. Never answer a question by scraping this page, and never expose a UI route as an agent's door — `references/mcp.md` is that door.
+
 The page a person opens to read their own vault: notes rendered, diagrams drawn, search that
 finds the note they phrased differently, the graph, and — behind a lock — editing.
 
@@ -32,6 +34,8 @@ the code; nobody should have to read `serve.py` to tell somebody what the page o
 | Short search status | One line: hits and coverage. Backend and any repair hint move to its tooltip | hover the line |
 | Images in notes | `![](shot.png)` displays; src resolved against the note, missing ones named | automatic |
 | Frontmatter strip | Shows YAML keys as chips instead of prose | automatic |
+| Tag chips | A note's tags as chips on their own row, each opening that tag's listing | automatic, under the strip |
+| Tag editing | Remove a chip, or add a tag picked from the vault's tree or typed new; saved with the note, previous version to the trash first | open the lock, then **Save** |
 | Diagram full screen | Expand, drag to pan, wheel/pinch to zoom, `Fit`, `Esc` | **Expand** on any diagram |
 | Diagram export | SVG, PNG (2x), `.mmd` source, PDF via print | in the full-screen bar |
 | Search | `.rag` semantic, else **names and prose together** — always says which answered and why | the search box |
@@ -41,8 +45,12 @@ the code; nobody should have to read `serve.py` to tell somebody what the page o
 | Every match per note | Up to 3 matching lines per note, each with its heading chain and line | on every card |
 | Honest totals | `k` is a page size; the real total is shown with **Show more** | under the results |
 | Search filters | Path glob and extension, both self-completing from the vault | the two boxes under search |
+| Tag filter | Keeps only hits under a tag node and everything below it, and says how many it removed; with no words it lists the tag's notes | the tag box in the sidebar |
 | Hit → sentence | Opens the note at the matching line, marks the block | click a hit; `#<path>:<line>` |
 | Graph | Force layout; hover to highlight, drag, click for typed relations, double-click to open | **Graph** tab |
+| Tags panel | The vault's tag tree, collapsible, each node with the notes under it; nodes the inventory does not list shown in italics | sidebar → Tags |
+| Tag listing | A tag's meaning, its children, and every note under it | click a tag, or `#+<tag>` |
+| Tag graph | The tag tree drawn: a node per tag sized by its notes, a line from parent to child; one subtree can be opened with its notes as leaves | **Tags** tab, `#tags`, `#tags+<tag>` |
 | Glossary panel | Every term the index defines, plus terms the notes use but never define | sidebar → Glossary |
 | Term decoration | First mention per block underlined, definition on hover | automatic in prose |
 | Term card | Definition, aliases, status, source note, mentions | click a term, or `#!<term>` |
@@ -68,11 +76,13 @@ the code; nobody should have to read `serve.py` to tell somebody what the page o
 | `GET /assets/<name>.js` | the two cached renderer bundles, same-origin |
 | `GET /api/tree` | every note and folder, plus the vault's standalone `.mmd` files |
 | `GET /api/note?path=` | one note's raw markdown, relations, backlinks, concepts — or a `.mmd` file |
-| `GET /api/search?q=&k=&path=&ext=` | semantic hits through `.rag`, or SQLite when there is none |
+| `GET /api/search?q=&k=&path=&ext=&tag=` | semantic hits through `.rag`, or SQLite when there is none |
 | `GET /manifest.webmanifest` `/sw.js` `/icon-192.png` `/icon-512.png` | what makes it installable |
 | `GET /pin?code=` | only when bound off loopback: the code that admits a client |
 | `GET /media?path=` | one image from the vault, by a path that is a KEY in the media allowlist |
 | `GET /api/glossary` | the vault's own vocabulary: what the index defines, and what the scanner merely saw |
+| `GET /api/tags` | the tag tree with counts: `nodes` the inventory lists, and apart from them `unlisted` ones only the notes carry |
+| `GET /api/tag-graph?root=&notes=&limit=` | the tag tree as nodes and edges, optionally one subtree, optionally with its notes as leaves |
 | `GET /api/history?path=` | the versions of one note sitting in the trash, newest first |
 | `GET /api/version?path=&at=` | one of those versions, by its stamp |
 | `GET /api/stats` `/api/graph` `/api/node` `/api/concepts` `/api/query` | `graph.py`'s payloads, unchanged |
@@ -100,6 +110,7 @@ behind and only then exit with "graph is empty".
 | backend reported | `rag` / `sqlite` | `text` |
 | bundles | `<vault>/.wiki/ui-assets/` — portable, travels with the vault | the shared OS cache |
 | trash | `<vault>/.wiki/.trash/` | the shared cache, keyed by the folder |
+| tags | `graph.py`'s tag tables plus the inventory `.wiki/tags.md`; a save lists a new tag there | the tree built from what the notes carry, every node `unlisted`; nothing listed anywhere |
 | written into the root | the vault's own machinery | **nothing, ever** — only the notes you edit |
 
 `FolderCorpus` reuses `scan_vault.walk()`, which already returns each file's title, outbound links
@@ -370,6 +381,43 @@ reader actually needs the reminder. It never enters `pre`, `code`, `a`, `textare
 strip or a drawn diagram — those are not prose. An **acronym matches case-sensitively**: `sca` in a
 sentence is a word, `SCA` is the term.
 
+## Tags: one writer, and the inventory is enriched by the same save
+
+A tag is a full path in the vault's tag tree, and `references/tagging.md` owns the rules. What the
+page adds is a way to walk the tree and a way for the owner to change a note's tags.
+
+- **`/api/tags` keeps what the inventory lists apart from what the notes merely carry**, the way
+  the glossary keeps definitions apart from candidates. An unlisted node has no meaning line and
+  nobody decided it belongs in the tree; hiding it would hide exactly the drift `tags.py check`
+  reports.
+- **A tag filter is applied to the hits, never inside a backend.** `.rag` cannot filter by tag, so
+  the search over-fetches to `SEARCH_LIMIT`, the filter runs against a set this server built, and
+  the answer carries `tag_hidden`, separate from the date's `hidden`. **The tag is a key**: it is
+  matched against tag paths and never reaches `open()` (rule 3).
+- **A tag edit is not a second write route.** `PUT /api/note` takes `{path, markdown, tags?}`. When
+  `tags` is present the server validates every tag first, 400 on a malformed one **before the
+  backup**, and then the one frontmatter writer, `tags.with_tags`, puts the line in. The page never
+  rewrites frontmatter itself: a second writer in JavaScript would be testable only in the opt-in
+  browser run. Rule 2 stands.
+- **Every save lists new tags in the inventory**, chip edit or Source mode alike: after the write
+  the server reads the saved note's tags and calls `tags.add_node` for each one the inventory
+  lacks, parents first, with no meaning line. The response names them in `inventory_added`. The
+  inventory's path is a constant of the vault; nothing from the request reaches it. **A plain
+  folder gets no inventory**, because that would turn somebody's folder into half a vault.
+- **The page sends `tags` only when a chip was edited.** Sent on every save, it would overwrite a
+  tag the author just typed into the frontmatter in Source mode.
+- **The server never drops a node.** Removing a tag's last carrier leaves a node nothing carries,
+  which `tags.py check` fails as `unused` until `audit` reports it and a `tag` run or the owner
+  drops it. A node listed from the page has no meaning line until one of those fills it in.
+- **Both graphs are one drawing.** `drawScene(scene)` lays out and draws whatever it is handed, and
+  the svg's listeners are bound once and read the current scene. `drawGraph` and `drawTagGraph`
+  only build scenes. A second copy of the force loop is how one graph stops getting the other's
+  fixes. The whole tag tree never carries notes; one subtree does, because a vault's worth of
+  leaves is what the O(n²) layout cannot afford. `limit` bounds tag nodes and leaves alike.
+- **Addresses:** `#+<tag>` is a tag's listing (`+` cannot appear in a tag, and a note path ends in
+  an extension a tag cannot contain), `#tags` the tag graph, `#tags+<tag>` one subtree with its
+  notes. Each sets `data-rendered`, which is what the browser checks wait on.
+
 ## Time — reading the vault as it stood on a date
 
 The store has carried `valid_from` / `valid_until` on notes and edges since the graph existed, and
@@ -545,9 +593,10 @@ the config was the source long before `serve.py` read it — the constant merely
 every write gate, every rejected path, the trash cap at exactly 20, and `--read-only`. It seeds
 fake bundles and passes `--no-fetch --no-reindex`, so it needs no network and no clock.
 
-**The glossary, the date and the in-place editor exist only once JavaScript has run**, so the
-server-side half cannot see them at all. They are asserted in `test_renders_in_a_browser`, which
-is opt-in and must be run for any change to the page:
+**The glossary, the date, the in-place editor and every tag surface exist only once JavaScript has
+run**, so the server-side half cannot see them at all. They are asserted in
+`test_renders_in_a_browser` and `test_tags_render_in_a_browser`, which are opt-in and must be run
+for any change to the page:
 
 ```bash
 WIKI_UI_ASSETS=<a vault>/.wiki/ui-assets python3 scripts/test_serve.py

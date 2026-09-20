@@ -2,7 +2,7 @@
 """Scan a notes vault and emit a manifest the wiki skill uses to build or refresh index.md.
 
 Stdlib only. One record per file: relative path, size, line count, mtime, H1, H2 headings,
-heading slugs, outbound links, frontmatter keys, the first non-frontmatter line, and glossary
+heading slugs, outbound links, frontmatter keys, tags, the first non-frontmatter line, and glossary
 candidates (acronyms used and term definitions stated). With --previous, each record is also
 marked NEW, CHANGED, UNCHANGED or REMOVED so a refresh re-describes only what moved.
 
@@ -117,9 +117,32 @@ RELATION_TYPES = frozenset({
 REL_TYPE_RE = re.compile(r"^[-*+]?\s*(?P<type>[a-z][a-z0-9-]{1,23})\s*::\s*")
 
 # Frontmatter values worth keeping: a note can be valid only for a period, and knowledge that was
-# right in 2024 and superseded in 2026 is not wrong - it is historical. Everything else in the
-# frontmatter is recorded by key only, as before.
+# right in 2024 and superseded in 2026 is not wrong - it is historical. Tags are kept too (below).
+# Everything else in the frontmatter is recorded by key only, as before.
 TEMPORAL_KEYS = ("valid_from", "valid_until")
+FRONT_MATTER_MAX_LINES = 200
+
+# --- Tags -------------------------------------------------------------------------------------
+# A tag is a FULL PATH in the vault's tag tree, segments joined by `/` (Obsidian's nested form):
+# `regulation/mifid/target-market`. A note tagged with a child is under every ancestor, so the
+# ancestors are never written beside it. references/tagging.md owns the rules.
+#
+# This module only READS, and it reads every form a vault may already hold - an inline list, a
+# block list, a comma scalar, a leading `#`, quotes - because `adopt` may not change a note. The
+# one WRITER is tags.py, and it writes one form.
+#
+# Keeping tag values does not make the manifest a copy of the vault: a tag is a closed,
+# inventory-bounded classification, capped per note and in length - routing metadata of the same
+# kind as `valid_from`, never prose.
+TAG_KEY = "tags"
+TAG_SEPARATOR = "/"
+TAG_SEGMENT_RE = re.compile(r"^[\w-]+$", re.UNICODE)
+MAX_TAGS = 12
+MAX_TAG_LEN = 80
+TAG_INVENTORY_PARTS = (".wiki", "tags.md")
+# One node per line: - `path/of/node` — meaning. (aka alias, alias)
+TAG_INVENTORY_LINE_RE = re.compile(r"^- `(?P<path>[^`]+)`(?:\s+[—–-]\s+(?P<rest>.*))?\s*$")
+TAG_AKA_RE = re.compile(r"\s*\(aka (?P<aka>[^)]*)\)\s*$")
 
 
 def load_relation_types(root):
@@ -202,33 +225,118 @@ def collect_links(rel_path, line, kind, links, known_types=None, unknown=None):
         })
 
 
+def is_tag(tag):
+    """Whether a string is a well-formed tag path: word-and-hyphen segments, none all digits."""
+
+    if not tag or len(tag) > MAX_TAG_LEN:
+        return False
+    segments = tag.split(TAG_SEPARATOR)
+
+    return all(TAG_SEGMENT_RE.match(s) and not s.isdigit() for s in segments)
+
+
+def sort_tag_tokens(raw_tag_text):
+    """Split the raw text of a `tags` value into (well-formed tags, malformed tokens).
+
+    The raw text is the key's own value plus any continuation lines, so an inline list, a block
+    list and a comma scalar all arrive here as one comma-separated string. Identity is the
+    casefolded path, which is how Obsidian matches nested tags.
+    """
+
+    tags, bad_tags = [], []
+    for token in raw_tag_text.replace("[", ",").replace("]", ",").split(","):
+        tag = token.strip().strip("'\"").strip().lstrip("#").casefold()
+        if not tag:
+            continue
+        if not is_tag(tag):
+            if tag not in bad_tags:
+                bad_tags.append(tag)
+        elif tag not in tags and len(tags) < MAX_TAGS:
+            tags.append(tag)
+
+    return tags, bad_tags
+
+
 def parse_front_matter_full(lines):
     """Return (keys, wanted values, index of the first line after the frontmatter block).
 
-    Only TEMPORAL_KEYS are kept as values. Keeping every value would put arbitrary note content
-    into the manifest, which is a routing artifact and not a copy of the vault.
+    Only TEMPORAL_KEYS and the tags are kept as values. Keeping every value would put arbitrary
+    note content into the manifest, which is a routing artifact and not a copy of the vault.
     """
     if not lines or lines[0].strip() != "---":
         return [], {}, 0
     keys, values = [], {}
-    for i in range(1, min(len(lines), 200)):
+    current_key, raw_tag_text = "", ""
+    for i in range(1, min(len(lines), FRONT_MATTER_MAX_LINES)):
         stripped = lines[i].strip()
         if stripped in ("---", "..."):
+            values["tags"], values["bad_tags"] = sort_tag_tokens(raw_tag_text)
             return keys, values, i + 1
-        if stripped and not stripped.startswith("#") and not stripped.startswith("-"):
-            if ":" in stripped and not lines[i].startswith((" ", "\t")):
-                key, _, value = stripped.partition(":")
-                key = key.strip()
-                keys.append(key)
-                if key in TEMPORAL_KEYS:
-                    values[key] = value.strip().strip("'\"")[:32]
-    return keys, values, 0
+        if not stripped or stripped.startswith("#"):
+            continue
+        is_continuation = stripped.startswith("-") or lines[i].startswith((" ", "\t"))
+        if is_continuation:
+            # A block list (`- a`) or a wrapped flow list belongs to the key above it.
+            if current_key == TAG_KEY:
+                raw_tag_text += "," + stripped.lstrip("-")
+        elif ":" in stripped:
+            key, _, value = stripped.partition(":")
+            current_key = key.strip()
+            keys.append(current_key)
+            if current_key in TEMPORAL_KEYS:
+                values[current_key] = value.strip().strip("'\"")[:32]
+            elif current_key == TAG_KEY:
+                raw_tag_text = value
+    return keys, {}, 0
 
 
 def parse_front_matter(lines):
     """Return (frontmatter keys, index of the first line after the frontmatter block)."""
     keys, _values, body_start = parse_front_matter_full(lines)
     return keys, body_start
+
+
+def parse_tags(lines):
+    """Return (tags, malformed tokens) from a note's lines. No closed frontmatter means no tags."""
+
+    _keys, values, _body_start = parse_front_matter_full(lines)
+    tags = values.get("tags", [])
+    bad_tags = values.get("bad_tags", [])
+
+    return tags, bad_tags
+
+
+def parse_tag_inventory(text):
+    """The tag tree a vault's inventory lists: {path: {"meaning", "aka"}}, in file order."""
+
+    inventory = {}
+    for line in text.splitlines():
+        match = TAG_INVENTORY_LINE_RE.match(line.rstrip())
+        if not match:
+            continue
+        rest = match.group("rest") or ""
+        aka_match = TAG_AKA_RE.search(rest)
+        aka = []
+        if aka_match:
+            aka = [a.strip().casefold() for a in aka_match.group("aka").split(",") if a.strip()]
+            rest = rest[:aka_match.start()]
+        inventory[match.group("path").strip().casefold()] = {"meaning": rest.strip(), "aka": aka}
+
+    return inventory
+
+
+def locate_tag_inventory(root):
+    """Where a vault keeps its tag tree. A fixed path, never a parameter."""
+
+    return os.path.join(root, *TAG_INVENTORY_PARTS)
+
+
+def load_tag_inventory(root):
+    """The vault's tag tree, or an empty one when the vault has no inventory file yet."""
+
+    text = read_text(locate_tag_inventory(root))
+
+    return parse_tag_inventory(text) if text else {}
 
 
 def is_term(token):
@@ -287,6 +395,8 @@ def describe(path, rel, known_types=None):
         "frontmatter_keys": [],
         "valid_from": "",
         "valid_until": "",
+        "tags": [],
+        "bad_tags": [],
         "unknown_relation_types": [],
         "first_line": "",
         "acronyms": {},
@@ -308,6 +418,8 @@ def describe(path, rel, known_types=None):
     record["frontmatter_keys"] = fm_keys
     record["valid_from"] = fm_values.get("valid_from", "")
     record["valid_until"] = fm_values.get("valid_until", "")
+    record["tags"] = fm_values.get("tags", [])
+    record["bad_tags"] = fm_values.get("bad_tags", [])
 
     in_fence = False
     acronyms, definitions = {}, {}
@@ -353,12 +465,58 @@ def describe(path, rel, known_types=None):
     return record
 
 
+def keep_content_dirs(dirnames):
+    """The subfolders worth descending into: never the vault's machinery or a build tree."""
+
+    return sorted(d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".git"))
+
+
+def read_head_lines(path):
+    """The lines a frontmatter block can occupy, without reading the rest of the note."""
+
+    head = []
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                head.append(line.rstrip("\n"))
+                if len(head) >= FRONT_MATTER_MAX_LINES:
+                    break
+    except OSError:
+        return []
+
+    return head
+
+
+def walk_tags(root):
+    """Every note's tags, read live from the note heads, as two maps keyed by relative path.
+
+    Returns (tags_by_note, bad_tags_by_note); a note with no malformed token has no entry in the
+    second. For callers that must not be stale - the consistency check, a re-parent in the middle
+    of a run - where the manifest and the graph still describe the vault as of the last scan.
+    """
+
+    tags_by_note, bad_tags_by_note = {}, {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = keep_content_dirs(dirnames)
+        for name in sorted(filenames):
+            if name.startswith(".") or os.path.splitext(name)[1].lower() not in NOTE_EXT:
+                continue
+            full = os.path.join(dirpath, name)
+            rel = os.path.relpath(full, root)
+            tags, bad_tags = parse_tags(read_head_lines(full))
+            tags_by_note[rel] = tags
+            if bad_tags:
+                bad_tags_by_note[rel] = bad_tags
+
+    return tags_by_note, bad_tags_by_note
+
+
 def walk(root, known_types=None):
     """Yield manifest records for every indexable file under root."""
     records = []
     known_types = known_types or load_relation_types(root)
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".git"))
+        dirnames[:] = keep_content_dirs(dirnames)
         for name in sorted(filenames):
             ext = os.path.splitext(name)[1].lower()
             if ext not in TEXT_EXT and ext not in OTHER_EXT:
@@ -509,6 +667,7 @@ def main(argv=None):
         "file_count": len(records),
         "folders": folder_summary(records),
         "glossary_candidates": glossary_candidates(records),
+        "tag_inventory": load_tag_inventory(root),
         "graph": graph,
         "backlinks": backlinks,
         "files": records + removed,
@@ -545,6 +704,18 @@ def main(argv=None):
             where = ", ".join(unknown[name][:3])
             more = "" if len(unknown[name]) <= 3 else " (+%d more)" % (len(unknown[name]) - 3)
             print("  %s :: -- %s%s" % (name, where, more))
+
+    # Same policy for tags: one malformed tag must not cost the scan, and must not pass silently.
+    malformed = {}
+    for record in records:
+        for tag in record.get("bad_tags") or []:
+            malformed.setdefault(tag, []).append(record["path"])
+    if malformed:
+        print("malformed tag(s), left out (references/tagging.md -> the grammar):")
+        for tag in sorted(malformed):
+            where = ", ".join(malformed[tag][:3])
+            more = "" if len(malformed[tag]) <= 3 else " (+%d more)" % (len(malformed[tag]) - 3)
+            print("  %s -- %s%s" % (tag, where, more))
     return 0
 
 

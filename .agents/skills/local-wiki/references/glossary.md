@@ -10,6 +10,10 @@ concept gets filed twice under two spellings.
 The glossary is routing infrastructure, like the rest of the index: this skill generates it, owns
 it, and repairs it. It is never a note.
 
+A glossary term is a **word this vault defines**. A tag is a **subject a note is about**
+(`references/tagging.md`). A term is not automatically a tag: `SCA` earns one only when notes are
+about it, not because they use the word.
+
 ## What earns an entry
 
 A **business or domain term**: an acronym, an internal system name, or a domain word that a reader

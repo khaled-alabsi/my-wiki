@@ -22,6 +22,10 @@ and search index, a report.
 
 Move · rename · merge · split · create a folder · delete a folder that is now empty · rewrite links.
 
+**Tags follow the content.** A merged note carries the union of its sources' tags, and a split
+note's tags are decided again for each part, both through `scripts/tags.py set`. Reshaping the tag
+tree itself is `tags.py move`, and the run ends with `tags.py check` (`references/tagging.md`).
+
 **It never destroys.** A note that is merged away or superseded is **moved to `.wiki/.trash/`**,
 preserving its relative path inside, after the destination has been written and verified to hold its
 content. There is no `rm` in this mode.

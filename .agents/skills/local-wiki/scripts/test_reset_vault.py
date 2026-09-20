@@ -83,7 +83,8 @@ class ResetVaultTest(unittest.TestCase):
         self.assertEqual(json.loads((self.tmp / ".wiki" / "contributors.json").read_text()),
                          {"version": 1, "contributors": {}})
         config = json.loads((self.tmp / ".wiki" / "wiki-config.json").read_text())
-        self.assertEqual(config["intake_wave"], 0)
+        self.assertNotIn("intake_wave", config,
+                         "the retired wave knob is dropped, never left reading as a live setting")
         self.assertNotEqual(config["last_reorganized_at"], "2020-01-01")
 
     def test_all_scope_takes_unmarked_notes_too(self) -> None:
@@ -137,6 +138,32 @@ class ResetVaultTest(unittest.TestCase):
         self.assertTrue(all(isinstance(n, int) and 0 < n <= reset_vault.FRONTMATTER_BYTES
                             for n in calls),
                         f"every read must be bounded, got {calls}")
+
+    def seed_tag_tree(self) -> Path:
+        inventory = self.tmp / ".wiki" / "tags.md"
+        inventory.write_text("# Tags\n\nOwner's own line.\n\n- `banking` — Running a bank.\n"
+                             "- `banking/accounts`\n", encoding="utf-8")
+        (self.tmp / ".wiki" / ".tag-run.json").write_text('{"scope": "", "done": ["use-cases"]}')
+        return inventory
+
+    def test_full_reset_empties_the_tag_tree(self) -> None:
+        inventory = self.seed_tag_tree()
+        result = run(self.tmp, "--scope", "all", "--yes")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = inventory.read_text(encoding="utf-8")
+        self.assertNotIn("- `", text, "a vault with no notes must list no tag nodes")
+        self.assertIn("Owner's own line.", text, "the lines above the nodes are the owner's and stay")
+        self.assertFalse((self.tmp / ".wiki" / ".tag-run.json").exists(),
+                         "a retag receipt about notes that are gone is derived state")
+
+    def test_sample_reset_keeps_the_tag_tree(self) -> None:
+        inventory = self.seed_tag_tree()
+        before = inventory.read_text(encoding="utf-8")
+        result = run(self.tmp, "--scope", "sample", "--yes")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(inventory.read_text(encoding="utf-8"), before,
+                         "real notes remain, so which nodes to drop is a decision, not a reset")
+        self.assertIn("tags.py", result.stdout, "the run must be told to check the tree afterwards")
 
     def test_refuses_a_directory_that_is_not_a_vault(self) -> None:
         result = run(self.tmp / "use-cases", "--scope", "all", "--yes")

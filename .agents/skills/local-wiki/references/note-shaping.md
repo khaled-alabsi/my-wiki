@@ -41,8 +41,11 @@ Material joining an existing note **adopts that note's form**:
   H1 and three H3s. Re-level the whole block, keeping its internal hierarchy intact.
 - **List style** — a note written in bullets does not get three paragraphs of prose appended. A note
   written in prose does not get a bullet dump. Convert; don't paste and hope.
-- **Density** — match the surrounding notes' level of detail. A vault of one-line facts doesn't want
-  a 40-line transcription of the same fact.
+- **Density — of phrasing, never of facts.** Match how the surrounding notes are *written*: their
+  verbosity, their sentence length, whether they explain or state. It is never a licence to drop a
+  fact. A vault of one-line facts doesn't want forty lines restating *one* fact; if the material
+  genuinely carries forty distinct facts, it lands as forty, or as its own note
+  (`references/ingest-sources.md` → Lose nothing).
 - **Tense and person** — imperative step lists stay imperative; "we decided" notes stay first
   person.
 - **Terminology** — use the vault's canonical glossary term, normalizing the material's variants
@@ -86,8 +89,9 @@ A new note gets the structure its shape implies, built to the vault's detected c
 ## 4. Reasoning to do before writing, in one pass
 
 - Does the destination note already have a section whose **form** this material should copy? Copy it.
-- Does the material repeat something the destination already says? Keep only what's genuinely new
-  (`references/placement-rules.md` → rule 1).
+- Does the material repeat something the destination already says? Keep only what's genuinely new —
+  decided per claim, against the line actually in the note, and a claim more specific than what's
+  there is new (`references/placement-rules.md` → rule 1).
 - Does it contain values, names or steps that belong in a **table** the note already has? Add rows;
   don't start a second table.
 - Does it introduce a term? Glossary entry, same run.
@@ -102,6 +106,9 @@ A new note gets the structure its shape implies, built to the vault's detected c
 - **Inventing sections the material doesn't fill**, to make the note look complete.
 - **Adding content the source didn't contain** to round out a shape — a five-step process with four
   steps stated stays four steps, with the gap marked.
+- **Dropping content the source did contain** to keep a note tidy — no summarizing, no "the key
+  points", no losing a threshold, a condition or an exception because the note is getting long
+  (`references/ingest-sources.md` → Lose nothing).
 - **Splitting a coherent note** because it got long. That's an `audit` finding, reported, not done as
   a side effect of filing.
 - **Adding a diagram to something that isn't a process.** Definitions, reference lists and

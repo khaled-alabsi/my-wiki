@@ -15,6 +15,32 @@ resort, not the safe default.
 
 <!-- profile-hook: placement-classify -->
 
+## Rule 0 — the delta pass: decide what is actually new
+
+**Runs before rules 1–5, per claim, never per file.** Filenames, file format and wording are
+irrelevant: the same material dropped again in a different shape must produce no second copy.
+
+With the destination note open (and its one-hop neighbourhood from the graph), give every claim in
+the unit one of four verdicts:
+
+| Verdict | Test | What happens |
+|---|---|---|
+| **present** | the note already states this, in any wording | dropped, and counted in the report |
+| **sharper** | same subject, more specific value — "15,000 EUR" where the note says "a threshold" | the existing line is refined, per the in-place edit rules |
+| **conflicting** | same subject, incompatible value | `references/conflict-detection.md`, never a silent add |
+| **new** | nothing in the vault states it | written |
+
+- **Substance, not string.** A reworded, reordered or re-formatted claim is `present`. A claim with
+  a different value is never `present`, however similar it reads.
+- **Bounded cost.** The comparison uses notes this run already opened; a unit whose claims found no
+  destination gets **one** `.rag` query, not one per claim.
+- **The counts are reported**: `47 claims — 31 present, 12 new, 3 sharper, 1 conflicting`. A re-drop
+  of an already-filed inbox reports `0 new` and writes nothing, which is the outcome this rule
+  exists to produce.
+- **`present` is the only verdict that drops anything**, and it is the one verdict that requires
+  having read the line that makes it true. Assuming coverage from a heading, an index entry or a
+  filename is not a delta pass (`references/ingest-sources.md` → Lose nothing).
+
 ## Rule 1 — Merge into an existing section
 
 **When**: a note already covers this topic *and* has a section the material belongs under.
@@ -23,7 +49,10 @@ Append into that section. Keep its existing structure — if it's a bullet list,
 prose, add a paragraph. Never reflow or rewrite what's already there.
 
 If the material overlaps what the section already says, add only the genuinely new parts, and say in
-the report what was already covered.
+the report what was already covered. **"Already covered" is decided per claim, by reading the line
+in the note** — never from the heading, the index entry or a general sense that the topic is there.
+A claim more specific than what the note says is new, and the overlap check is never a shortcut for
+condensing the material (`references/ingest-sources.md` → Lose nothing).
 
 ## Rule 2 — Add a new section to an existing note
 

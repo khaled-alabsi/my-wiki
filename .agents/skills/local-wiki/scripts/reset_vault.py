@@ -24,6 +24,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import tags as tag_tool  # noqa: E402
+
 CONTENT_FOLDERS = [
     "processes", "sub-processes", "use-cases", "regulatory", "business-rules",
     "domain-model", "products", "systems", "technical",
@@ -33,6 +36,8 @@ CONTENT_FOLDERS = [
 DERIVED = [
     ".wiki/graph.sqlite",
     ".wiki/manifest.json",
+    ".wiki/.second-pass",
+    ".wiki/.tag-run.json",          # a retag's record of folders done, about notes that are gone
     ".rag/db/chunks.lance",
     ".rag/state/manifest.sqlite",
 ]
@@ -179,10 +184,17 @@ def main() -> int:
         path.write_text("\n".join(header).rstrip("\n") + "\n\n" + placeholder + "\n",
                         encoding="utf-8")
 
+    # The tag tree lists subjects that notes carry. With every note gone it lists none. After a
+    # sample reset real notes remain, so which nodes are now unused is for `tags.py check` to say
+    # and for whoever reads it to drop - a reset does not decide what the vault is about.
+    inventory = vault / ".wiki" / "tags.md"
+    if args.scope == "all" and inventory.exists():
+        tag_tool.clear_inventory(vault)
+
     config_path = vault / ".wiki" / "wiki-config.json"
     if config_path.exists():
         config = json.loads(config_path.read_text(encoding="utf-8"))
-        config["intake_wave"] = 0
+        config.pop("intake_wave", None)  # retired: intake files one unit at a time
         config["last_reorganized_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
 
@@ -192,6 +204,9 @@ def main() -> int:
           f"--root {vault} --out .wiki/manifest.json")
     print(f"  python3 .agents/skills/local-wiki/scripts/graph.py scan --vault {vault}")
     print("  .rag/bin/rag update --quiet")
+    if inventory.exists():
+        print(f"  python3 .agents/skills/local-wiki/scripts/tags.py --vault {vault} check"
+              "   # drop the nodes it lists as unused")
     if not args.keep_index:
         print("  then ask the local-wiki skill to refresh index.md")
     return 0

@@ -98,7 +98,7 @@ most once per session.
 
   ```bash
   cd .agents/skills/local-wiki/scripts
-  python3 test_scan_vault.py && python3 test_graph.py && python3 test_memory.py \
+  python3 test_scan_vault.py && python3 test_graph.py && python3 test_tags.py && python3 test_memory.py \
     && python3 test_contributors.py && python3 test_mermaid_validator.py \
     && python3 test_serve.py
   ```

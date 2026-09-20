@@ -15,6 +15,7 @@ rules that are easy to break and silent when broken:
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -82,6 +83,15 @@ def record_of(manifest: dict, path: str) -> dict:
         if record["path"] == path:
             return record
     raise AssertionError(f"{path} not in manifest")
+
+
+def load_scanner():
+    """The scanner as a module, for the functions that have no command-line door."""
+    spec = importlib.util.spec_from_file_location("scan_vault_under_test", SCANNER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    return module
 
 
 # --- 11: target, anchor, kind, and file-relative resolution ----------------------------------
@@ -389,6 +399,94 @@ def test_stoplisted_word_is_not_a_glossary_term() -> None:
           module.is_term("PIPs"), "a real acronym's plural was dropped")
 
 
+# --- 29-34: tags ------------------------------------------------------------------------------
+# A tag is a full path in a tree (`regulation/mifid/target-market`). The scanner READS every form a
+# vault may already hold; only tags.py writes, and it writes one form.
+
+def test_every_written_form_of_tags_reads_the_same() -> None:
+    m = scan({
+        "inline.md": "---\ntags: [Regulation/MiFID, payments/sca]\n---\n\n# Inline\n",
+        "block.md": "---\ntitle: B\ntags:\n  - regulation/mifid\n  - \"payments/sca\"\nstatus: x\n---\n\n# Block\n",
+        "scalar.md": "---\ntags: '#regulation/mifid', payments/sca\n---\n\n# Scalar\n",
+    })
+    want = ["regulation/mifid", "payments/sca"]
+    for path in ("inline.md", "block.md", "scalar.md"):
+        check(f"29 tags read from {path}", record_of(m, path).get("tags") == want,
+              str(record_of(m, path).get("tags")))
+    check("29 a key after a block list is still a key",
+          record_of(m, "block.md").get("frontmatter_keys") == ["title", "tags", "status"],
+          str(record_of(m, "block.md").get("frontmatter_keys")))
+
+
+def test_note_without_tags_has_none() -> None:
+    m = scan({"a.md": "---\ntitle: A\n---\n\n# A\n\ntags: [body/line]\n", "b.md": "# B\n"})
+    check("30 frontmatter without tags yields an empty list",
+          record_of(m, "a.md").get("tags") == [], str(record_of(m, "a.md").get("tags")))
+    check("30 a note with no frontmatter yields an empty list",
+          record_of(m, "b.md").get("tags") == [], str(record_of(m, "b.md").get("tags")))
+    check("30 the other record fields survive", record_of(m, "a.md").get("h1") == "A",
+          str(record_of(m, "a.md").get("h1")))
+
+
+def test_malformed_tag_is_reported_and_never_fatal() -> None:
+    m, out = scan_verbose({"a.md": "---\ntags: [good/one, bad:colon, 2024, has space]\n---\n\n# A\n"})
+    record = record_of(m, "a.md")
+    check("31 well-formed tags are kept", record.get("tags") == ["good/one"], str(record.get("tags")))
+    check("31 malformed tags are recorded apart",
+          record.get("bad_tags") == ["bad:colon", "2024", "has space"], str(record.get("bad_tags")))
+    check("31 malformed tags are reported to the user", "bad:colon" in out, out[-300:])
+
+
+def test_tags_per_note_are_capped() -> None:
+    many = ", ".join(f"t/n{i}x" for i in range(20))
+    m = scan({"a.md": f"---\ntags: [{many}]\n---\n\n# A\n"})
+    check("32 a note's tags are capped at 12", len(record_of(m, "a.md").get("tags") or []) == 12,
+          str(len(record_of(m, "a.md").get("tags") or [])))
+
+
+def test_manifest_carries_the_tag_inventory() -> None:
+    inventory = (
+        "# Tags\n\n"
+        "- `regulation` — Rules a bank must follow.\n"
+        "- `regulation/mifid` — EU investor protection. (aka mifid2, wphg)\n"
+        "- `payments`\n"
+    )
+    m = scan({".wiki/tags.md": inventory, "a.md": "# A\n"})
+    got = m.get("tag_inventory")
+    check("33 the manifest carries the inventory", isinstance(got, dict) and len(got) == 3, str(got))
+    node = (got or {}).get("regulation/mifid") or {}
+    check("33 a node's meaning is parsed", node.get("meaning") == "EU investor protection.", str(node))
+    check("33 a node's aliases are parsed", node.get("aka") == ["mifid2", "wphg"], str(node))
+    check("33 a node may have no meaning yet",
+          (got or {}).get("payments") == {"meaning": "", "aka": []}, str((got or {}).get("payments")))
+    empty = scan({"a.md": "# A\n"})
+    check("33 no inventory file is an empty inventory", empty.get("tag_inventory") == {},
+          str(empty.get("tag_inventory")))
+
+
+def test_walk_tags_reads_heads_only() -> None:
+    module = load_scanner()
+    root = Path(tempfile.mkdtemp(prefix="scan-test-"))
+    files = {
+        "notes/a.md": "---\ntags: [regulation/mifid]\n---\n\n# A\n",
+        "notes/b.md": "# B\n\ntags: [body/only]\n",
+        "notes/c.md": "---\ntags: [bad:colon]\n---\n\n# C\n",
+        ".wiki/.trash/old.md": "---\ntags: [trashed/tag]\n---\n",
+        ".agents/skills/local-wiki/SKILL.md": "---\ntags: [skill/tag]\n---\n",
+    }
+    for rel, text in files.items():
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    got, bad = module.walk_tags(str(root))
+    check("34 malformed tokens come back apart, keyed by note", bad == {"notes/c.md": ["bad:colon"]},
+          str(bad))
+    check("34 walk_tags returns each note's tags", got.get("notes/a.md") == ["regulation/mifid"], str(got))
+    check("34 a `tags:` line in the body is not a tag", got.get("notes/b.md") == [], str(got))
+    check("34 machinery folders are not walked",
+          not any(path.startswith(".") for path in got), str(sorted(got)))
+
+
 def main() -> int:
     if not SCANNER.exists():
         print(f"scan_vault.py not found at {SCANNER}", file=sys.stderr)
@@ -405,7 +503,10 @@ def main() -> int:
                test_vault_config_extends_the_vocabulary,
                test_typed_link_in_a_code_fence_is_still_not_an_edge,
                test_temporal_frontmatter_is_captured,
-               test_note_without_temporal_frontmatter_is_unbounded):
+               test_note_without_temporal_frontmatter_is_unbounded,
+               test_every_written_form_of_tags_reads_the_same, test_note_without_tags_has_none,
+               test_malformed_tag_is_reported_and_never_fatal, test_tags_per_note_are_capped,
+               test_manifest_carries_the_tag_inventory, test_walk_tags_reads_heads_only):
         try:
             fn()
         except Exception as exc:

@@ -832,6 +832,9 @@ Use these rules as strong defaults, not blind laws.
 
 Never place a note based only on title, tags, or keywords.
 
+Tags describe a note once it is understood. They are never why it lands somewhere
+(`references/tagging.md` → Tags never decide where a note goes).
+
 ### Rule 2: Search before creating
 
 Before creating a note or folder, search for semantically equivalent
@@ -1215,7 +1218,12 @@ Note contains "bank"
 → Banking/
 ```
 
-Wrong.
+``` text
+Note is tagged banking
+→ Banking/
+```
+
+Wrong, both times. A tag is a keyword somebody chose; it is still a keyword.
 
 Understand the note's purpose.
 

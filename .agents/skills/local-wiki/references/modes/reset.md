@@ -56,10 +56,20 @@ note ever should.
    .rag/bin/rag update --quiet
    ```
 
-6. **Rewrite `index.md`'s folder sections** back to `_No notes yet._`, and the Business Glossary back
+6. **Settle the tag tree.** A reset of `all` has already emptied `.wiki/tags.md`: with no notes left
+   there are no subjects to list. A reset of `sample` leaves the tree alone, because real notes
+   remain and which nodes to let go is a decision:
+
+   ```bash
+   python3 .agents/skills/local-wiki/scripts/tags.py --vault <vault> check
+   ```
+
+   Every node it fails as `unused` was carried only by the notes that just left. Drop them, leaves
+   first, with the `drop` command each line names (`references/tagging.md`).
+7. **Rewrite `index.md`'s folder sections** back to `_No notes yet._`, and the Business Glossary back
    to its empty placeholder. The index is note content's map; leaving entries for notes that are now
    in the trash is the drift this skill exists to prevent.
-7. **Report**, then the closeout checklist.
+8. **Report**, then the closeout checklist.
 
 ## Mandatory closeout lines for this mode
 
@@ -70,6 +80,7 @@ note ever should.
   [x] tracking reset ............ contributors, todos, gaps, observations, proposals
   [x] manifest rebuilt .......... n files
   [x] graph rescanned ........... n edges
+  [x] tag tree settled .......... emptied (all) | n unused nodes dropped — tags check OK: ...
   [x] search ................... n/a for the reset itself; index rebuilt below
   [x] search index rebuilt ...... n files embedded
   [x] index.md emptied .......... 9 folder sections, glossary

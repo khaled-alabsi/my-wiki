@@ -199,6 +199,8 @@ Within a folder section: subfolders first, then loose files, each alphabetically
 - Glossary entries for terms the vault never uses, or definitions taken from general knowledge —
   the glossary describes *this* vault's vocabulary, not a domain's
 - `.obsidian/`, `.git/`, `node_modules/`, `.wiki/`, `.rag/`, attachments and binary folders
+- A note's tags, or the tag tree. Their one owner is `.wiki/tags.md` (`references/tagging.md`), and
+  the index's line budget is for routing
 - Restating the vault's purpose at length — one blockquote line is the whole allowance
 
 ## Staleness

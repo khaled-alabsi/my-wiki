@@ -14,3 +14,6 @@ _utils/mcp_server.log
 .wiki/ui-assets/
 .input/*
 !.input/.gitkeep
+.wiki/.second-pass/
+.wiki/.tag-run.json
+.wiki/.tags.lock

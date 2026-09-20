@@ -14,7 +14,9 @@ The two that carry the design:
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -361,6 +363,189 @@ def test_schema_upgrade_rebuilds_instead_of_migrating() -> None:
     check("35 a rescan refills it", payload["count"] == 1, str(payload))
 
 
+# --- 36-46: the tag tree ------------------------------------------------------------------------
+# A tag is a full path; a note under a child is under every ancestor. `reg_a` beside `regxa` is
+# there on purpose: `_` is a legal tag character and a SQL LIKE wildcard, so a prefix match written
+# with LIKE returns the wrong notes and nothing raises.
+
+TAGGED = {
+    ".wiki/tags.md": (
+        "# Tags\n\n"
+        "- `banking` — Running a bank.\n"
+        "- `banking/mifid` — EU investor protection.\n"
+        "- `banking/mifid/target-market`\n"
+        "- `banking/payments` — Moving money.\n"
+        "- `reg_a`\n"
+        "- `reg_a/x`\n"
+    ),
+    "notes/a.md": "---\ntags: [banking/mifid/target-market]\n---\n\n# A\n",
+    "notes/b.md": "---\ntags: [banking/mifid]\n---\n\n# B\n",
+    "notes/c.md": "---\nvalid_from: 2025-01-01\ntags: [banking/payments]\n---\n\n# C\n",
+    "notes/d.md": "---\ntags: [reg_a/x]\n---\n\n# D\n",
+    "notes/e.md": "---\ntags: [regxa/y]\n---\n\n# E\n",
+    "notes/f.md": "# F\n\nNo tags.\n",
+}
+
+
+def build_tagged_vault() -> Path:
+    vault = make_vault(TAGGED)
+    scan(vault, "--full")
+    return vault
+
+
+def load_graph_module():
+    spec = importlib.util.spec_from_file_location("graph_under_test", GRAPH)
+    module = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(HERE))
+    spec.loader.exec_module(module)
+    return module
+
+
+def tree_rows(vault: Path, *args: str) -> dict[str, dict]:
+    return {row["tag"]: row for row in json_query(vault, "--tag-tree", *args)["results"]}
+
+
+def test_tag_ancestors_are_nodes() -> None:
+    vault = build_tagged_vault()
+    conn = sqlite3.connect(str(vault / ".wiki" / "graph.sqlite"))
+    parents = dict(conn.execute("SELECT path, parent FROM tags").fetchall())
+    conn.close()
+    check("36 every ancestor of a carried tag is a node",
+          {"banking", "banking/mifid", "banking/mifid/target-market", "regxa"} <= set(parents),
+          str(sorted(parents)))
+    check("36 a node knows its parent, and a top-level node has none",
+          parents.get("banking/mifid") == "banking" and parents.get("banking") == "", str(parents))
+
+
+def test_tag_query_returns_descendants() -> None:
+    vault = build_tagged_vault()
+    wide = json_query(vault, "--tag", "banking")
+    paths = [row["path"] for row in wide["results"]]
+    check("37 a node returns the notes of everything under it, once each",
+          paths == ["notes/a.md", "notes/b.md", "notes/c.md"], str(paths))
+    check("37 each row says which tag put it there",
+          wide["results"][0].get("tag") == "banking/mifid/target-market", str(wide["results"][0]))
+    narrow = [row["path"] for row in json_query(vault, "--tag", "Banking/MiFID")["results"]]
+    check("37 a deeper node is narrower, and case does not matter",
+          narrow == ["notes/a.md", "notes/b.md"], str(narrow))
+
+
+def test_underscore_in_a_tag_is_not_a_wildcard() -> None:
+    vault = build_tagged_vault()
+    paths = [row["path"] for row in json_query(vault, "--tag", "reg_a")["results"]]
+    check("38 `reg_a` does not match `regxa`", paths == ["notes/d.md"], str(paths))
+
+
+def test_unknown_tag_finds_nothing() -> None:
+    vault = build_tagged_vault()
+    result = run(vault, "query", "--tag", "nowhere")
+    check("39 an unknown tag exits 1", result.returncode == 1, str(result.returncode))
+    check("39 and says so", "nowhere" in result.stdout, result.stdout)
+
+
+def test_tag_tree_is_one_level_with_counts() -> None:
+    vault = build_tagged_vault()
+    top = tree_rows(vault)
+    check("40 the root lists top-level nodes only",
+          sorted(top) == ["banking", "reg_a", "regxa"], str(sorted(top)))
+    check("40 a node counts the distinct notes under it", top["banking"]["notes"] == 3
+          and top["banking"]["direct"] == 0 and top["banking"]["children"] == 2, str(top["banking"]))
+    under = tree_rows(vault, "banking")
+    check("40 asking for a node lists its children",
+          sorted(under) == ["banking/mifid", "banking/payments"], str(sorted(under)))
+    check("40 a child counts its own and its subtree's notes",
+          under["banking/mifid"]["notes"] == 2 and under["banking/mifid"]["direct"] == 1,
+          str(under["banking/mifid"]))
+    bounded = json_query(vault, "--tag-tree", "--limit", "1")
+    check("40 the tree is bounded and says when the bound bit",
+          len(bounded["results"]) == 1 and bounded["truncated"] is True, str(bounded))
+
+
+def test_tag_meaning_comes_from_the_inventory() -> None:
+    vault = build_tagged_vault()
+    top = tree_rows(vault)
+    check("41 a listed node carries its meaning", top["banking"]["meaning"] == "Running a bank."
+          and top["banking"]["listed"] is True, str(top["banking"]))
+    check("41 a node only the notes carry is marked unlisted", top["regxa"]["listed"] is False
+          and top["regxa"]["meaning"] == "", str(top["regxa"]))
+
+
+def test_incremental_scan_rebuilds_tags_whole() -> None:
+    vault = build_tagged_vault()
+    (vault / "notes" / "d.md").write_text("# D\n\nNo longer tagged, and longer.\n", encoding="utf-8")
+    scan(vault, "--since-manifest")
+    check("42 a tag taken off a note leaves the graph on an incremental scan",
+          run(vault, "query", "--tag", "reg_a").returncode == 1,
+          run(vault, "query", "--tag", "reg_a").stdout)
+    check("42 the other notes keep theirs", json_query(vault, "--tag", "banking")["count"] == 3)
+
+
+def test_tag_tables_survive_a_schema_upgrade() -> None:
+    vault = build_tagged_vault()
+    conn = sqlite3.connect(str(vault / ".wiki" / "graph.sqlite"))
+    conn.execute("UPDATE meta SET value = '2' WHERE key = 'schema_version'")
+    conn.execute("DROP TABLE tags")
+    conn.commit()
+    conn.close()
+    result = run(vault, "query", "--tag", "banking")
+    check("43 a store from before tags is rebuilt, not crashed on",
+          "no such table" not in result.stderr, result.stderr[:300])
+    scan(vault, "--full")
+    check("43 a rescan refills the tags", json_query(vault, "--tag", "banking")["count"] == 3)
+
+
+def test_tag_query_honours_as_of() -> None:
+    vault = build_tagged_vault()
+    paths = [row["path"] for row in
+             json_query(vault, "--tag", "banking", "--as-of", "2024-06-01")["results"]]
+    check("44 a note outside its window is not under the tag that year",
+          paths == ["notes/a.md", "notes/b.md"], str(paths))
+
+
+def test_suggest_uses_a_shared_tag() -> None:
+    vault = make_vault({
+        ".wiki/tags.md": "- `fruit`\n- `fruit/rare`\n",
+        "notes/a.md": "---\ntags: [fruit/rare]\n---\n\n# Alpha\n\nApples.\n",
+        "notes/b.md": "---\ntags: [fruit/rare]\n---\n\n# Beta\n\nBoats.\n",
+        "notes/z.md": "# Zeta\n\nZebras.\n",
+    })
+    scan(vault, "--full")
+    result = run(vault, "suggest", "--path", "notes/a.md", "-k", "5")
+    check("45 two notes sharing nothing but a tag are candidates",
+          "notes/b.md" in result.stdout and "notes/z.md" not in result.stdout, result.stdout[:300])
+
+
+def test_tag_graph_payload() -> None:
+    graph = load_graph_module()
+    vault = build_tagged_vault()
+    conn = graph.connect(vault)
+    try:
+        whole = graph.build_tag_graph_payload(conn)
+        by_id = {node["id"]: node for node in whole["nodes"]}
+        check("46 every tag node is in the tag graph, as a tag",
+              {"banking", "banking/mifid", "reg_a/x", "regxa/y"} <= set(by_id)
+              and all(node["kind"] == "tag" for node in whole["nodes"]), str(sorted(by_id)))
+        check("46 a node's size is the notes under it", by_id["banking"]["notes"] == 3
+              and by_id["banking/mifid/target-market"]["notes"] == 1, str(by_id["banking"]))
+        check("46 a child hangs off its parent",
+              {"source": "banking", "target": "banking/mifid", "rel_type": "parent-of"} in whole["edges"],
+              str(whole["edges"][:4]))
+        bounded = graph.build_tag_graph_payload(conn, limit=2)
+        check("46 the limit bounds the nodes and says so",
+              len(bounded["nodes"]) == 2 and bounded["truncated"] is True
+              and bounded["total"] == len(whole["nodes"]), str(bounded))
+        rooted = graph.build_tag_graph_payload(conn, root="banking/mifid", notes=True)
+        kinds = {node["id"]: node["kind"] for node in rooted["nodes"]}
+        check("46 a rooted graph holds that subtree and, when asked, its notes as leaves",
+              kinds == {"banking/mifid": "tag", "banking/mifid/target-market": "tag",
+                        "notes/a.md": "note", "notes/b.md": "note"}, str(kinds))
+        check("46 a note leaf hangs off the tag it carries",
+              {"source": "banking/mifid", "target": "notes/b.md", "rel_type": "tagged"} in rooted["edges"],
+              str(rooted["edges"]))
+    finally:
+        conn.close()
+
+
 def main() -> int:
     for tool in (GRAPH, SCANNER):
         if not tool.exists():
@@ -375,7 +560,13 @@ def main() -> int:
                test_as_of_excludes_notes_outside_their_window,
                test_path_between_finds_the_shortest_chain, test_components_finds_islands,
                test_concepts_are_derived_from_the_vault, test_json_is_bounded,
-               test_schema_upgrade_rebuilds_instead_of_migrating):
+               test_schema_upgrade_rebuilds_instead_of_migrating,
+               test_tag_ancestors_are_nodes, test_tag_query_returns_descendants,
+               test_underscore_in_a_tag_is_not_a_wildcard, test_unknown_tag_finds_nothing,
+               test_tag_tree_is_one_level_with_counts, test_tag_meaning_comes_from_the_inventory,
+               test_incremental_scan_rebuilds_tags_whole, test_tag_tables_survive_a_schema_upgrade,
+               test_tag_query_honours_as_of, test_suggest_uses_a_shared_tag,
+               test_tag_graph_payload):
         try:
             fn()
         except Exception as exc:

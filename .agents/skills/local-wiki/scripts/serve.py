@@ -396,6 +396,7 @@ def verify_asset(vault: Path, name: str, cache: Path | None = None) -> bytes | N
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import graph  # noqa: E402
 import scan_vault  # noqa: E402
+import tags as tag_tool  # noqa: E402  (`tags` is what every payload calls a note's own list)
 
 
 # --- reading ------------------------------------------------------------------------------------
@@ -778,8 +779,12 @@ def build_tree(conn, vault: Path, as_of: str | None = None) -> dict:
     rows = [r for r in rows if graph.in_window(r, as_of)]
     hidden = before - len(rows)
     folders = sorted({r["path"].rsplit("/", 1)[0] for r in rows if "/" in r["path"]})
+    tags_by_note: dict = {}
+    for tagged in conn.execute("SELECT path, tag FROM note_tags ORDER BY tag").fetchall():
+        tags_by_note.setdefault(tagged["path"], []).append(tagged["tag"])
     for row in rows:
         row["folder"] = row["path"].rsplit("/", 1)[0] if "/" in row["path"] else ""
+        row["tags"] = tags_by_note.get(row["path"], [])
     diagrams = [{"path": d, "title": d.rsplit("/", 1)[-1][:-4],
                  "folder": d.rsplit("/", 1)[0] if "/" in d else ""}
                 for d in find_diagrams(vault) if not is_hidden(d, hidden_in)]
@@ -821,6 +826,48 @@ def split_front_matter(text: str) -> tuple[list[list[str]], str]:
     return [], text          # an unterminated block is not frontmatter, it is content
 
 
+# --- tags ---------------------------------------------------------------------------------------
+# A tag is a full path in the vault's tag tree (references/tagging.md). graph.py builds the tree
+# and its counts; tags.py is the only writer. What is here is the shaping both corpora share, so a
+# vault and a plain folder answer the page in one form.
+
+NO_INVENTORY = "this vault has no tag inventory yet - the tree is built from what the notes carry"
+FOLDER_TAGS = "plain folder - no tag inventory; the tree is built from what the notes carry"
+
+
+def read_live_tags(text: str) -> list[str]:
+    """A note's tags from its own bytes, so a chip is right before the debounced reindex lands."""
+
+    note_tags, _bad_tags = scan_vault.parse_tags(text.splitlines())
+
+    return note_tags
+
+
+def build_tag_tree_payload(index: dict, reason: str) -> dict:
+    """What the inventory LISTS, and apart from it what the notes merely carry. Never merged: an
+    unlisted node has no meaning line and nobody decided it belongs in the tree."""
+
+    ordered = sorted(index.values(), key=lambda entry: tuple(entry["tag"].split(graph.TAG_SEPARATOR)))
+    nodes = [entry for entry in ordered if entry["listed"]]
+    unlisted = [entry for entry in ordered if not entry["listed"]]
+
+    return {"nodes": nodes, "unlisted": unlisted, "source": ".wiki/tags.md",
+            "reason": "" if nodes else reason}
+
+
+def list_tagged_notes(corpus, allowed: set, tag: str, k: int) -> dict:
+    """The notes under a tag, in the shape of a search answer, for a tag asked for with no words."""
+
+    rows = [row for row in corpus.tree()["notes"] if row["path"] in allowed]
+    hits = [{"path": row["path"], "title": row.get("title", ""), "kind": "note", "score": None,
+             "matched_by": "tag", "heading_path": "", "citation": row["path"], "line": None,
+             "openable": True, "text": ", ".join(row.get("tags") or [])} for row in rows]
+
+    return {"backend": "tags", "hits": hits[:k], "scanned": len(rows), "total": len(hits),
+            "truncated": len(hits) > k,
+            "reason": "" if hits else f"no note carries `{tag}` or anything under it"}
+
+
 def read_diagram(vault: Path, rel: str) -> dict:
     """One `.mmd` file, wrapped in a fence so the page renders it with the same code path as a
     fence inside a note. `rel` is a KEY in find_diagrams(), never a path handed to open()."""
@@ -852,9 +899,11 @@ def read_note(vault: Path, conn, rel: str, as_of: str | None = None) -> dict:
         # editor that silently drops a note's frontmatter is a data-loss bug, not a display one.
         payload["markdown"] = text
         payload["frontmatter"], payload["body"] = split_front_matter(text)
+        payload["tags"] = read_live_tags(text)
     except (OSError, UnicodeDecodeError) as exc:
         payload["markdown"] = payload["body"] = ""
         payload["frontmatter"] = []
+        payload["tags"] = []
         payload["error"] = f"unreadable: {type(exc).__name__}"
     payload["backlinks"] = [r for r in payload.get("relations", []) if r.get("direction") == "in"]
     payload["kind"] = "note"
@@ -987,6 +1036,41 @@ class VaultCorpus:
         finally:
             conn.close()
 
+    def _load_listed_note_tags(self, conn, as_of: str | None) -> list:
+        """(tag, note) pairs for the notes the tree lists - a hidden or working folder's notes
+        are not counted under a tag they cannot be reached from."""
+        hidden_in = hidden_folders(self.root)
+        return [(tag, path) for tag, path in graph.load_note_tags(conn, as_of)
+                if not in_a_working_folder(path) and not is_hidden(path, hidden_in)]
+
+    def build_tag_tree(self, as_of: str | None = None) -> dict:
+        conn = self._conn()
+        try:
+            index = graph.build_tag_index(self._load_listed_note_tags(conn, as_of), graph.load_listed_tags(conn))
+        finally:
+            conn.close()
+        return build_tag_tree_payload(index, NO_INVENTORY)
+
+    def find_tagged_paths(self, node: str, as_of: str | None = None) -> set:
+        """The notes under a tag node. `node` is a KEY matched against tags, never a path."""
+        conn = self._conn()
+        try:
+            return {row["path"] for row in
+                    graph.find_notes_under_tag(self._load_listed_note_tags(conn, as_of), node)}
+        finally:
+            conn.close()
+
+    def build_tag_graph(self, root: str, notes: bool, as_of: str | None, limit: int) -> dict:
+        conn = self._conn()
+        try:
+            note_tags = self._load_listed_note_tags(conn, as_of)
+            index = graph.build_tag_index(note_tags, graph.load_listed_tags(conn))
+            titles = {r["path"]: r["title"] for r in conn.execute("SELECT path, title FROM notes")}
+        finally:
+            conn.close()
+        return graph.build_tag_graph(index, note_tags, titles,
+                                     root.casefold().strip(graph.TAG_SEPARATOR), notes, limit)
+
 
 class FolderCorpus:
     """Any folder of markdown: no `.wiki`, no database, no semantic index, nothing written.
@@ -1034,7 +1118,8 @@ class FolderCorpus:
     def tree(self, as_of: str | None = None) -> dict:
         rows = [{"path": r["path"], "title": self._title(r),
                  "valid_from": r.get("valid_from"), "valid_until": r.get("valid_until"),
-                 "folder": r["path"].rsplit("/", 1)[0] if "/" in r["path"] else ""}
+                 "folder": r["path"].rsplit("/", 1)[0] if "/" in r["path"] else "",
+                 "tags": r.get("tags") or []}
                 for r in self.records()]
         before = len(rows)
         rows = [r for r in rows if graph.in_window(r, as_of)]
@@ -1087,9 +1172,11 @@ class FolderCorpus:
             text = (self.root / rel).read_text(encoding="utf-8")
             payload["markdown"] = text
             payload["frontmatter"], payload["body"] = split_front_matter(text)
+            payload["tags"] = read_live_tags(text)
         except (OSError, UnicodeDecodeError) as exc:
             payload["markdown"] = payload["body"] = ""
             payload["frontmatter"] = []
+            payload["tags"] = []
             payload["error"] = f"unreadable: {type(exc).__name__}"
         payload["backlinks"] = [r for r in relations if r["direction"] == "in"]
         titles = {r["path"]: self._title(r) for r in self.records()}
@@ -1137,6 +1224,24 @@ class FolderCorpus:
 
     def concepts(self, limit: int) -> list:
         return []
+
+    def _load_note_tags(self, as_of: str | None) -> list:
+        """(tag, note) pairs straight from the walk. A plain folder has no inventory and gets none
+        written: every node it shows is one its notes carry."""
+        return [(tag, r["path"]) for r in self.records() if graph.in_window(r, as_of)
+                for tag in r.get("tags") or []]
+
+    def build_tag_tree(self, as_of: str | None = None) -> dict:
+        return build_tag_tree_payload(graph.build_tag_index(self._load_note_tags(as_of), {}), FOLDER_TAGS)
+
+    def find_tagged_paths(self, node: str, as_of: str | None = None) -> set:
+        return {row["path"] for row in graph.find_notes_under_tag(self._load_note_tags(as_of), node)}
+
+    def build_tag_graph(self, root: str, notes: bool, as_of: str | None, limit: int) -> dict:
+        note_tags = self._load_note_tags(as_of)
+        titles = {r["path"]: self._title(r) for r in self.records()}
+        return graph.build_tag_graph(graph.build_tag_index(note_tags, {}), note_tags, titles,
+                                     root.casefold().strip(graph.TAG_SEPARATOR), notes, limit)
 
     def query(self, params: dict, limit: int, as_of) -> dict:
         return {"error": "graph queries need a vault; this is a plain folder"}
@@ -1544,16 +1649,47 @@ def make_handler(vault: Path, token: str, search: Search, reindexer: Reindexer,
             if not isinstance(markdown, str):
                 self._json({"error": "markdown must be a string"}, 400)
                 return
+            # A tag edit rides on this same write: the page sends the note's tags beside its
+            # text and the ONE frontmatter writer puts them in. Refused before the backup, so a
+            # malformed tag leaves neither a changed note nor a trash entry behind it.
+            if "tags" in payload:
+                try:
+                    wanted = payload["tags"] if isinstance(payload["tags"], list) else None
+                    markdown = tag_tool.with_tags(markdown, tag_tool.normalize(wanted))
+                except (ValueError, TypeError, AttributeError) as exc:
+                    self._json({"error": f"tags refused: {exc}"}, 400)
+                    return
             backup = backup_note(vault, target, cache)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(markdown, encoding="utf-8")
+            inventory_added = self._list_new_tags(markdown)
             if hasattr(corpus, "refresh"):
                 corpus.refresh()   # the in-memory index is now a version behind the disk
             reindexer.poke()
             self._json({"path": str(target.relative_to(vault.resolve())),
                         "bytes": len(markdown.encode("utf-8")),
                         "backup": str(backup) if backup else None,
-                        "created": backup is None})
+                        "created": backup is None,
+                        "tags": read_live_tags(markdown),
+                        "inventory_added": inventory_added})
+
+        def _list_new_tags(self, markdown: str) -> list:
+            """List every tag the saved note carries that the vault's inventory lacks, parents
+            first. After EVERY write, not only a chip edit - a tag typed in Source mode is as new
+            to the vault as one picked from a chip. A plain folder has no inventory and gets none:
+            that would turn somebody's folder into half a vault. The inventory's path is a
+            constant of the vault; nothing from the request reaches it."""
+            if corpus.mode != "vault":
+                return []
+            added = []
+            for tag in read_live_tags(markdown):
+                for node in graph.list_tag_ancestors(tag) + [tag]:
+                    try:
+                        if tag_tool.add_node(vault, node):
+                            added.append(node)
+                    except ValueError:
+                        return added       # a full tree: `tags.py check` reports the rest
+            return added
 
         # --- the reads ------------------------------------------------------------------
 
@@ -1647,10 +1783,33 @@ def make_handler(vault: Path, token: str, search: Search, reindexer: Reindexer,
                            or {"error": "unknown note"})
             elif route == "/api/glossary":
                 self._json(corpus.glossary(index_name))
+            elif route == "/api/tags":
+                self._json(corpus.build_tag_tree(as_of))
+            elif route == "/api/tag-graph":
+                self._json(corpus.build_tag_graph(params.get("root", ""),
+                                            params.get("notes", "") in ("1", "true"), as_of, limit))
             elif route == "/api/search":
-                found = search.run(corpus, params.get("q", ""),
-                                   min(int(params.get("k") or 10), SEARCH_LIMIT),
-                                   params.get("path", ""), params.get("ext", ""))
+                k = min(int(params.get("k") or 10), SEARCH_LIMIT)
+                # A tag is applied to the HITS, like the date below and for the same reason:
+                # `.rag` cannot filter by tag. So the search over-fetches, the filter runs here
+                # against a set this server built, and the answer says how many it removed.
+                tag = (params.get("tag") or "").strip().casefold().strip(graph.TAG_SEPARATOR)
+                allowed = corpus.find_tagged_paths(tag, as_of) if tag else None
+                if tag and not params.get("q", "").strip():
+                    found = list_tagged_notes(corpus, allowed, tag, k)
+                else:
+                    found = search.run(corpus, params.get("q", ""), SEARCH_LIMIT if tag else k,
+                                       params.get("path", ""), params.get("ext", ""))
+                tag_hidden = 0
+                if tag and found.get("backend") != "tags":
+                    kept = [h for h in found.get("hits", []) if h.get("path") in allowed]
+                    tag_hidden = len(found.get("hits", [])) - len(kept)
+                    found["truncated"] = bool(found.get("truncated")) or len(kept) > k
+                    found["hits"] = kept[:k]
+                    if not allowed:
+                        found["reason"] = f"no note carries `{tag}` or anything under it"
+                found["tag"] = tag
+                found["tag_hidden"] = tag_hidden
                 # Time is applied to the HITS, not inside a backend: `.rag` cannot filter by date,
                 # and a result set that is silently shorter is the failure "search says why"
                 # exists to prevent. A concept hit has a term where a path goes and is never dated.
@@ -1818,6 +1977,13 @@ PAGE_HTML = r"""<!doctype html>
   #glossary .g { padding:3px 4px; cursor:pointer; font-size:12px; }
   #glossary .g:hover { color:var(--accent); }
   #glossary .g b { font-weight:600; }
+  #tagtree .tagrow { display:flex; gap:4px; align-items:center; padding:3px 4px; font-size:12px; }
+  #tagtree .caret { width:10px; cursor:pointer; color:var(--dim); user-select:none; }
+  #tagtree .tagrow a { flex:1; color:inherit; text-decoration:none; }
+  #tagtree .tagrow a:hover { color:var(--accent); }
+  #tagtree .n { color:var(--dim); font-size:10px; }
+  #tagtree .unlisted a { font-style:italic; }
+  .tagkids { display:none; margin-left:12px; } .tagkids.open { display:block; }
   #glossary .g .st { color:var(--dim); font-size:10px; margin-left:4px; }
   .termcard h2 { margin-top:0; }
   .termcard .chip { display:inline-block; font-size:10.5px; border:1px solid var(--line);
@@ -1839,6 +2005,15 @@ PAGE_HTML = r"""<!doctype html>
   .fm span { display:inline-flex; gap:4px; border:1px solid var(--line); border-radius:9px;
              padding:1px 8px; background:var(--panel); }
   .fm b { font-weight:600; color:var(--dim); }
+  .tags { display:flex; flex-wrap:wrap; gap:5px 6px; margin:0 0 14px; font-size:11px;
+          align-items:center; }
+  .tagchip { display:inline-flex; gap:3px; align-items:center; border:1px solid var(--accent);
+             border-radius:9px; padding:1px 8px; }
+  .tagchip a { text-decoration:none; }
+  .tagchip button { border:0; background:none; padding:0 0 0 2px; cursor:pointer;
+                    color:var(--dim); font-size:12px; line-height:1; }
+  #tagadd { width:140px; font-size:11px; padding:1px 6px; }
+  .tagnote { padding:5px 0; border-top:1px solid var(--line); }
   .mermaid { background:var(--panel); border:1px solid var(--line); border-radius:6px;
              padding:10px; overflow-x:auto; margin:1em 0; }
   #graph { flex:1; display:none; position:relative; } #graph.on { display:block; }
@@ -1849,6 +2024,7 @@ PAGE_HTML = r"""<!doctype html>
   #meta { position:absolute; left:12px; bottom:10px; color:var(--dim); font-size:11px; }
   #graph svg { cursor:grab; touch-action:none; } #graph svg.panning { cursor:grabbing; }
   circle.sel { fill:var(--warn); }
+  circle.leaf { fill:var(--dim); }
   circle.near { fill:var(--accent); }
   line.hot { stroke:var(--accent); stroke-opacity:.9; stroke-width:1.6; }
   .faded { opacity:.12; }
@@ -1959,6 +2135,11 @@ PAGE_HTML = r"""<!doctype html>
     <input id="fpath" list="paths" placeholder="path filter, e.g. reg/*" autocomplete="off">
     <input id="fext" list="exts" placeholder=".md" autocomplete="off">
   </div>
+  <div class="row">
+    <input id="ftag" list="tagnames" placeholder="tag filter, e.g. banking/mifid" autocomplete="off"
+           title="keep only notes under this tag - alone, it lists them">
+  </div>
+  <datalist id="tagnames"></datalist>
   <datalist id="paths"></datalist>
   <datalist id="exts"></datalist>
   <datalist id="names"></datalist>
@@ -1967,6 +2148,9 @@ PAGE_HTML = r"""<!doctype html>
 
   <h2 id="glossary-h" style="display:none">Glossary</h2>
   <div id="glossary"></div>
+
+  <h2 id="tags-h" style="display:none">Tags</h2>
+  <div id="tagtree"></div>
 
   <h2>Vault</h2>
   <div id="stats" class="dim"></div>
@@ -1981,6 +2165,7 @@ PAGE_HTML = r"""<!doctype html>
     <span id="where" class="dim">nothing open</span>
     <button id="tab-note">Note</button>
     <button id="tab-graph">Graph</button>
+    <button id="tab-tags" title="the tag tree, drawn">Tags</button>
     <button id="hist" title="previous versions of this note">History</button>
     <input id="q" list="names" placeholder="search this vault…" autocomplete="off">
     <button id="q-clear" title="clear the search (Esc)" style="display:none">&#10005;</button>
@@ -2057,6 +2242,8 @@ let AS_OF = "";
 // The vault's own vocabulary, loaded once. Used for the sidebar list and for decorating terms
 // where they appear in prose.
 let TERMS = [];
+// The vault's tag tree: what its inventory lists, and apart from it what the notes merely carry.
+let TAGS = { nodes: [], unlisted: [] };
 
 const $ = s => document.querySelector(s);
 const NS = "http://www.w3.org/2000/svg";
@@ -2115,6 +2302,7 @@ async function bootInner() {
   if (typeof tree.hidden === "number" && tree.hidden > 0)
     $("#stats").textContent += ` \u00b7 ${tree.hidden} hidden on ${AS_OF}`;
   await loadGlossary();
+  await loadTags();
   route();
 }
 
@@ -2226,6 +2414,73 @@ function decorateTerms(root) {
   });
 }
 
+// --- tags: a tree to walk -----------------------------------------------------------------
+// A tag is a full path (`banking/mifid/target-market`) and a note under a child is under every
+// ancestor, so the sidebar shows the tree a level at a time and a node's count is everything
+// below it. Nodes the inventory does not list are shown too, in italics - hiding them would hide
+// exactly the drift `tags.py check` reports.
+
+const allTagNodes = () => [...(TAGS.nodes || []), ...(TAGS.unlisted || [])];
+const tagHash = tag => "#+" + encodeURIComponent(tag);
+
+function renderTagLevel(parent) {
+  return allTagNodes().filter(n => n.parent === parent)
+    .sort((a, b) => a.tag.localeCompare(b.tag))
+    .map(n =>
+      `<div class="tagrow${n.listed ? "" : " unlisted"}" data-tag="${esc(n.tag)}"` +
+      ` title="${esc(n.meaning || (n.listed ? "" : "carried by notes, not in the inventory"))}">` +
+      `<span class="caret" data-caret="${esc(n.tag)}">${n.children ? "\u25b8" : ""}</span>` +
+      `<a href="${tagHash(n.tag)}">${esc(n.name)}</a><span class="n">${n.notes}</span></div>` +
+      (n.children ? `<div class="tagkids" data-kids="${esc(n.tag)}">${renderTagLevel(n.tag)}</div>`
+                  : "")).join("");
+}
+
+async function loadTags() {
+  TAGS = await api("/api/tags");
+  const all = allTagNodes();
+  $("#tags-h").style.display = all.length ? "" : "none";
+  $("#tagnames").innerHTML = all.map(n => `<option value="${esc(n.tag)}">`).join("");
+  $("#tagtree").innerHTML = renderTagLevel("");
+  $("#tagtree").querySelectorAll("[data-caret]").forEach(caret => caret.onclick = () => {
+    const kids = $("#tagtree").querySelector(`[data-kids="${CSS.escape(caret.dataset.caret)}"]`);
+    if (!kids) return;
+    const open = kids.classList.toggle("open");
+    caret.textContent = open ? "\u25be" : "\u25b8";
+  });
+}
+
+// A tag is not a note either: no file, so no edit control, no history and no lock.
+async function openTagListing(name) {
+  const tag = (name || "").toLowerCase().replace(/^\/+|\/+$/g, "");
+  const node = allTagNodes().find(n => n.tag === tag);
+  CURRENT = null; DIRTY = false;
+  setView("note");
+  $("#where").textContent = tag + "  (tag)";
+  $("#note").classList.remove("dim", "live");
+  const found = await api("/api/search", { q: "", tag, k: 50 });
+  const parts = tag.split("/");
+  const crumbs = parts.map((part, i) =>
+    `<a href="${tagHash(parts.slice(0, i + 1).join("/"))}">${esc(part)}</a>`).join(" / ");
+  const kids = allTagNodes().filter(n => n.parent === tag).map(n =>
+    `<span class="tagchip"><a href="${tagHash(n.tag)}">${esc(n.name)}</a> ${n.notes}</span>`).join(" ");
+  const notes = (found.hits || []).map(h =>
+    `<div class="tagnote"><a href="#" data-p="${esc(h.path)}">${esc(h.title || h.path)}</a> ` +
+    `<span class="dim">${esc(h.path)} \u00b7 ${esc(h.text || "")}</span></div>`).join("");
+  $("#note").innerHTML =
+    `<div class="termcard tagcard"><h2>${crumbs}</h2>` +
+    (node && node.meaning ? `<p>${esc(node.meaning)}</p>` : "") +
+    `<p><span class="chip">${node ? node.notes : 0} note${node && node.notes === 1 ? "" : "s"} under it</span>` +
+    `<span class="chip">${node ? node.direct : 0} carrying it directly</span>` +
+    (node && !node.listed ? `<span class="chip">not in the inventory</span>` : "") + `</p>` +
+    (kids ? `<p class="tags">${kids}</p>` : "") +
+    `<p><a href="#tags+${encodeURIComponent(tag)}">Show it in the tag graph</a></p>` +
+    (notes || `<p class="dim">${esc(found.reason || "No note carries this tag.")}</p>`) +
+    `</div>`;
+  $("#note").querySelectorAll("a[data-p]").forEach(a =>
+    a.onclick = ev => { ev.preventDefault(); openNote(a.dataset.p); });
+  document.body.dataset.rendered = "+" + tag;
+}
+
 // `#graph` opens the graph, anything else is a note path. No note is called "graph" - every one
 // of them ends in .md or .mmd - so the two cannot collide.
 function route() {
@@ -2238,7 +2493,14 @@ function route() {
   else if (AS_OF && !location.hash.includes("~")) { setAsOf("", raw); return; }
   // `#!<term>` is a glossary entry, which is not a note and has no file behind it.
   if (raw.startsWith("!")) { openTerm(raw.slice(1)); return; }
+  // `#+<tag>` lists the notes under a tag. `+` cannot appear in a tag, and a note path ends in an
+  // extension a tag cannot contain, so the two cannot collide.
+  if (raw.startsWith("+") && !/\.(md|markdown|mdx|mmd)$/i.test(raw)) {
+    openTagListing(raw.slice(1)); return;
+  }
   if (raw === "graph") { setView("graph"); return; }
+  // `#tags` draws the tag tree; `#tags+<tag>` draws one subtree with its notes as leaves.
+  if (raw === "tags" || raw.startsWith("tags+")) { setView("tags", raw.slice(5)); return; }
   // `#<path>@<n>` opens the note and blows up its nth diagram, so a diagram can be linked to.
   const at = raw.lastIndexOf("@");
   let wanted = at > 0 ? raw.slice(0, at) : raw;
@@ -2489,6 +2751,36 @@ async function openNote(path, line) {
   if (line) jumpToLine(line);
 }
 
+// A note's tags: a chip each, linking into the tag tree. With the lock open a chip can be removed
+// and one added - picked from the vault's own tree, or typed new. The edit is NOT a write of its
+// own: it rides on Save, through the same PUT as the text, and the server is what rewrites the
+// frontmatter line and lists a tag the vault has never seen.
+function renderTagRow() {
+  const row = $("#notetags");
+  if (!row) return;
+  const tags = (CURRENT && CURRENT.tags) || [];
+  const editable = UNLOCKED && !READ_ONLY && CURRENT && CURRENT.kind === "note";
+  row.style.display = (tags.length || editable) ? "" : "none";
+  row.innerHTML = tags.map(tag =>
+    `<span class="tagchip"><a href="${tagHash(tag)}">${esc(tag)}</a>` +
+    (editable ? `<button data-untag="${esc(tag)}" title="remove this tag">\u00d7</button>` : "") +
+    `</span>`).join("") +
+    (editable ? `<input id="tagadd" list="tagnames" placeholder="add a tag\u2026" ` +
+                `autocomplete="off">` : "");
+  row.querySelectorAll("[data-untag]").forEach(button =>
+    button.onclick = () => editTags(tags.filter(tag => tag !== button.dataset.untag)));
+  const add = row.querySelector("#tagadd");
+  if (add) add.onchange = () => { if (add.value.trim()) editTags([...tags, add.value]); };
+}
+
+function editTags(next) {
+  const cleaned = next.map(tag => tag.trim().toLowerCase().replace(/^#/, "")).filter(Boolean);
+  CURRENT.tags = [...new Set(cleaned)];
+  CURRENT.tagsEdited = true;
+  DIRTY = true;
+  renderTagRow();
+}
+
 async function render(note) {
   // `body` is the note without its frontmatter. Handing the raw file to a markdown renderer turns
   // the opening `---` into a horizontal rule and the keys into a paragraph of "author: ... type:
@@ -2498,8 +2790,11 @@ async function render(note) {
   // where the author wrote `[[x]]` - a silent edit, which is the one thing the editor may not do.
   const md = note.body !== undefined ? note.body : (note.markdown || "");
   $("#note").classList.remove("dim");
-  const fm = (note.frontmatter || []).length
-    ? `<div class="fm">` + note.frontmatter.map(([k, v]) =>
+  // Tags leave the metadata strip: they are links into the tag tree, and editable, so they get
+  // a row of their own.
+  const pairs = (note.frontmatter || []).filter(([k]) => k !== "tags");
+  const fm = pairs.length
+    ? `<div class="fm">` + pairs.map(([k, v]) =>
         `<span><b>${esc(k)}</b>${esc(v)}</span>`).join("") + `</div>`
     : "";
   // Render token by token so every top-level block carries the source line it started on.
@@ -2515,8 +2810,9 @@ async function render(note) {
     banners += `<div class="banner">This note was not valid on ${esc(AS_OF)}` +
       (note.valid_from ? ` \u2014 it starts ${esc(note.valid_from)}` : "") +
       (note.valid_until ? `, it ends ${esc(note.valid_until)}` : "") + `.</div>`;
-  $("#note").innerHTML = banners + fm + (window.marked ? blocksWithLines(md)
-                                                       : "<pre>" + esc(md) + "</pre>");
+  $("#note").innerHTML = banners + fm + `<div class="tags" id="notetags"></div>` +
+    (window.marked ? blocksWithLines(md) : "<pre>" + esc(md) + "</pre>");
+  renderTagRow();
 
   // ```mermaid fences arrive as <pre><code class="language-mermaid">; mermaid wants its own node.
   $("#note").querySelectorAll("code.language-mermaid").forEach(code => {
@@ -2683,7 +2979,8 @@ function statusLine(found, cov) {
 
 // Everything the line used to say, kept in full for whoever hovers it.
 function statusDetail(found, extra) {
-  const how = { rag: "semantic", text: "names and prose", sqlite: "titles only" };
+  const how = { rag: "semantic", text: "names and prose", sqlite: "titles only",
+                tags: "every note under the tag" };
   return [how[found.backend] || found.backend].concat(extra).join(" \u00b7 ");
 }
 
@@ -2714,7 +3011,7 @@ $("#q").oninput = () => {
   $("#hits").innerHTML = "";
   searchTimer = setTimeout(runSearch, 220);
 };
-$("#fpath").onchange = $("#fext").onchange = runSearch;
+$("#fpath").onchange = $("#fext").onchange = $("#ftag").onchange = runSearch;
 
 let SEARCH_SEQ = 0;
 // How many hits this query has asked for so far. Grows only when the reader asks for more, and
@@ -2723,13 +3020,16 @@ let SEARCH_K = 12;
 
 async function runSearch() {
   const q = $("#q").value.trim();
+  const tag = $("#ftag").value.trim();
   if (q !== runSearch._last) { SEARCH_K = 12; runSearch._last = q; }   // a new question, page one
-  if (!q) { $("#hits").innerHTML = ""; $("#backend").textContent = ""; showResults(false); return; }
+  // A tag alone is a question too: it lists the notes under that node.
+  if (!q && !tag) { $("#hits").innerHTML = ""; $("#backend").textContent = ""; showResults(false); return; }
+  showResults(true);
   // A slower earlier query used to land after a newer one and overwrite it, leaving results that
   // did not match the box. The answer is only written if it is still the latest question asked.
   const seq = ++SEARCH_SEQ;
   const found = await api("/api/search",
-    { q, k: SEARCH_K, path: $("#fpath").value.trim(), ext: $("#fext").value.trim() });
+    { q, k: SEARCH_K, path: $("#fpath").value.trim(), ext: $("#fext").value.trim(), tag });
   if (seq !== SEARCH_SEQ) return;
   // Always name the backend. A literal match that reads like a semantic one is the failure this
   // line exists to prevent.
@@ -2746,6 +3046,10 @@ async function runSearch() {
   if (found.backend === "text" && found.scanned && !cov) extra.push(`scanned ${found.scanned} files`);
   if (found.backend === "rag" && found.reranked === false) extra.push("not reranked");
   if (found.backend !== "rag" && found.reason) extra.push(found.reason);
+  // A filter that removes hits says so, or a short list reads as "that is all there is".
+  if (found.tag) extra.push(found.tag_hidden
+    ? `${found.tag_hidden} hit${found.tag_hidden === 1 ? "" : "s"} outside the tag ${found.tag}`
+    : `under the tag ${found.tag}`);
   (found.notes || []).forEach(n => extra.push(n));
   // Someone who just typed a word is reading for the hit count, not for why the semantic index is
   // unavailable and which command repairs it. All of that stays - on the tooltip, where it is
@@ -2763,7 +3067,7 @@ async function runSearch() {
     if (h.line) byNote[at.get(key)].lines.push(h);
   });
 
-  const said = { title: "in the name", text: "in the text", concept: "glossary",
+  const said = { title: "in the name", text: "in the text", concept: "glossary", tag: "tagged",
                  rerank: "reranked", hybrid: "hybrid", vector: "semantic" };
   $("#hits").innerHTML = byNote.map(({ head, lines }) => {
     const why = head.matched_by
@@ -2954,6 +3258,7 @@ $("#lock").onclick = () => {
   $("#srcmode").style.display = UNLOCKED ? "" : "none";
   if (UNLOCKED) { UNDO = []; if (SRC_MODE) $("#edit").value = CURRENT ? docSource() : ""; }
   liveEdit(UNLOCKED && !SRC_MODE && !!CURRENT);
+  renderTagRow();
   if (VIEW === "note") setView("note");
 };
 $("#srcmode").style.display = "none";
@@ -2964,18 +3269,32 @@ $("#save").onclick = async () => {
   if (!UNLOCKED || !CURRENT) return;
   await closeBlock();
   const markdown = SRC_MODE ? $("#edit").value : docSource();
+  // Tags travel only when a chip was edited. Sent on every save they would overwrite a tag the
+  // author just typed into the frontmatter in Source mode.
+  const fields = { path: CURRENT.path, markdown };
+  if (CURRENT.tagsEdited) fields.tags = CURRENT.tags;
   const response = await fetch("/api/note", {
     method: "PUT",
     headers: { "Content-Type": "application/json", "X-Wiki-Token": TOKEN },
-    body: JSON.stringify({ path: CURRENT.path, markdown }),
+    body: JSON.stringify(fields),
   });
   const result = await response.json();
   if (!response.ok) { toast(result.error || "save refused"); return; }
   DIRTY = false;
-  CURRENT.markdown = markdown;
-  CURRENT.body = markdown.slice(frontMatterRaw().length);
   UNDO = [];
-  toast(result.backup ? "saved · previous version in .wiki/.trash/" : "saved");
+  const listed = result.inventory_added || [];
+  if (CURRENT.tagsEdited || listed.length) {
+    // The server rewrote the frontmatter line, so what is on disk is not what was sent.
+    const fresh = await api("/api/note", { path: CURRENT.path });
+    if (!fresh.error) CURRENT = fresh;
+    await loadTags();
+  } else {
+    CURRENT.markdown = markdown;
+    CURRENT.body = markdown.slice(frontMatterRaw().length);
+    CURRENT.tags = result.tags || CURRENT.tags;
+  }
+  toast((result.backup ? "saved · previous version in .wiki/.trash/" : "saved") +
+        (listed.length ? ` · new in the tag tree: ${listed.join(", ")}` : ""));
   await render(CURRENT);
 };
 
@@ -3302,43 +3621,34 @@ function releasePointer(ev) {
 $("#stage").addEventListener("pointerup", releasePointer);
 $("#stage").addEventListener("pointercancel", releasePointer);
 
-let GRAPH_DRAWN = false;
+// What #g is showing right now. Both graphs - the notes and the tag tree - go through the same
+// layout and the same listeners, which are bound ONCE and read this. A second copy of the force
+// loop per kind of graph is how one of them quietly stops getting the other's fixes.
+let SCENE = null, SCENE_KIND = "";
+let CAMERA = { x: 0, y: 0, k: 1 }, SELECTED = null, DRAG = null, PANNING = null;
 
-function setView(next) {
+function setView(next, tagRoot) {
   VIEW = next;
   // The raw textarea is now the ESCAPE HATCH, not the editor. Unlocking leaves the rendered note
   // on screen and edits it in place; only Source mode swaps in the whole-file textarea.
   const editing = next === "note" && UNLOCKED && SRC_MODE;
   $("#note").classList.toggle("off", next !== "note" || editing);
   $("#edit").classList.toggle("on", editing);
-  $("#graph").classList.toggle("on", next === "graph");
+  $("#graph").classList.toggle("on", next === "graph" || next === "tags");
   // Lay it out against the real container. Drawn while hidden, every measurement is zero and the
   // layout falls back to a guessed canvas size.
-  if (next === "graph" && !GRAPH_DRAWN) { GRAPH_DRAWN = true; drawGraph(); }
+  if (next === "graph" && SCENE_KIND !== "notes") drawGraph();
+  if (next === "tags" && SCENE_KIND !== "tags:" + (tagRoot || "")) drawTagGraph(tagRoot || "");
 }
 $("#tab-note").onclick = () => setView("note");
 $("#tab-graph").onclick = () => { location.hash = "graph"; setView("graph"); };
+$("#tab-tags").onclick = () => { location.hash = "tags"; setView("tags", ""); };
 
 // --- the graph, for seeing the shape of the whole thing --------------------------------
 // A hand-rolled force layout: a CDN is unavailable offline and this page must work with nothing
 // installed beyond the two bundles this server hands out.
 
-async function drawGraph() {
-  const data = await api("/api/graph", { limit: 400 });
-  const svg = $("#g"), box = $("#graph").getBoundingClientRect();
-  const W = box.width || 900, H = box.height || 600;
-  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-  // /api/graph sends `nodes` as plain path STRINGS and the titles in a map beside them. Spreading
-  // a string gives {0:"R",1:"E",...} with no .path, which silently drops every edge - the lookup
-  // below misses on both ends and the lines never get built.
-  const titles = data.titles || {};
-  const nodes = data.nodes.map((path, i) => ({
-    path, title: titles[path] || path,
-    x: W / 2 + Math.cos(i) * (60 + i % 90), y: H / 2 + Math.sin(i) * (60 + i % 90),
-  }));
-  const at = Object.fromEntries(nodes.map(n => [n.path, n]));
-  const links = data.edges.filter(e => at[e.source] && at[e.target]);
-
+function layoutScene(nodes, links, at, W, H) {
   for (let step = 0; step < 180; step++) {
     for (const a of nodes) for (const b of nodes) {
       if (a === b) continue;
@@ -3355,6 +3665,26 @@ async function drawGraph() {
       n.y = Math.max(20, Math.min(H - 20, n.y + (H / 2 - n.y) * 0.002));
     }
   }
+}
+
+// A scene is what one graph IS, apart from how any graph is drawn:
+//   nodes    [{ id, label, r?, cls? }]      links  [{ source, target, rel_type }]
+//   address  what the page signals when it is on screen
+//   meta     (nodeCount, linkCount) -> the line under the drawing
+//   detail   id -> the selection panel's html      open  id -> what a double-click does
+function drawScene(scene) {
+  const svg = $("#g"), box = $("#graph").getBoundingClientRect();
+  const W = box.width || 900, H = box.height || 600;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const nodes = scene.nodes;
+  nodes.forEach((n, i) => {
+    n.x = W / 2 + Math.cos(i) * (60 + i % 90);
+    n.y = H / 2 + Math.sin(i) * (60 + i % 90);
+  });
+  const at = Object.fromEntries(nodes.map(n => [n.id, n]));
+  const links = scene.links.filter(e => at[e.source] && at[e.target]);
+  layoutScene(nodes, links, at, W, H);
+
   const make = (tag, attrs) => {
     const el = document.createElementNS(NS, tag);
     for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
@@ -3364,12 +3694,12 @@ async function drawGraph() {
   // One transform group holds the whole scene, so panning and zooming is a single attribute
   // rather than 250 coordinate rewrites.
   const view = make("g", { id: "gview" });
-  const drawn = new Map();          // path -> {dot, label, lines:[{line, other}]}
-  const neighbours = new Map();     // path -> Set(path)
+  const drawn = new Map();          // id -> {node, dot, label, lines:[{line, end}]}
+  const neighbours = new Map();     // id -> Set(id)
 
   nodes.forEach(n => {
-    drawn.set(n.path, { node: n, lines: [] });
-    neighbours.set(n.path, new Set());
+    drawn.set(n.id, { node: n, lines: [] });
+    neighbours.set(n.id, new Set());
   });
   links.forEach(e => {
     const line = make("line", { x1: at[e.source].x, y1: at[e.source].y,
@@ -3383,133 +3713,207 @@ async function drawGraph() {
   });
 
   nodes.forEach(n => {
-    const entry = drawn.get(n.path);
-    const degree = neighbours.get(n.path).size;
-    const dot = make("circle", { cx: n.x, cy: n.y, r: 4 + Math.min(6, degree) });
-    dot.dataset.p = n.path;
+    const entry = drawn.get(n.id);
+    const degree = neighbours.get(n.id).size;
+    const dot = make("circle", { cx: n.x, cy: n.y,
+                                 r: n.r != null ? n.r : 4 + Math.min(6, degree) });
+    dot.dataset.p = n.id;
+    dot.dataset.kind = n.kind || "note";
+    if (n.cls) dot.classList.add(n.cls);
     const label = make("text", { x: n.x + 9, y: n.y + 3, class: "lbl" });
-    label.textContent = n.title || n.path;
-    label.dataset.p = n.path;
+    label.textContent = n.label || n.id;
+    label.dataset.p = n.id;
     entry.dot = dot;
     entry.label = label;
     view.append(dot, label);
   });
   svg.replaceChildren(view);
 
-  // --- interaction ---------------------------------------------------------------------
-  // A picture you can only look at answers "is it connected". Being able to grab a node, follow
-  // its edges and read its relations is what answers "connected to WHAT, and how".
+  CAMERA = { x: 0, y: 0, k: 1 }; SELECTED = null; DRAG = null; PANNING = null;
+  SCENE = Object.assign({}, scene, { svg, view, drawn, neighbours });
+  $("#gdetail").classList.remove("on");
+  $("#meta").textContent = scene.meta(nodes.length, links.length);
+  bindSceneOnce();
+  document.body.dataset.rendered = scene.address;
+}
 
-  let VIEW = { x: 0, y: 0, k: 1 }, SELECTED = null, DRAG = null, PANNING = null;
-  const applyView = () =>
-    view.setAttribute("transform", `translate(${VIEW.x} ${VIEW.y}) scale(${VIEW.k})`);
-  const point = ev => {
-    const box = svg.getBoundingClientRect();
-    return { x: (ev.clientX - box.left - VIEW.x) / VIEW.k,
-             y: (ev.clientY - box.top - VIEW.y) / VIEW.k };
-  };
+// --- interaction ---------------------------------------------------------------------
+// A picture you can only look at answers "is it connected". Being able to grab a node, follow
+// its edges and read its relations is what answers "connected to WHAT, and how".
 
-  function moveNode(path) {
-    const { node, dot, label, lines } = drawn.get(path);
-    dot.setAttribute("cx", node.x); dot.setAttribute("cy", node.y);
-    label.setAttribute("x", node.x + 9); label.setAttribute("y", node.y + 3);
-    lines.forEach(({ line, end }) => {
-      line.setAttribute("x" + end, node.x);
-      line.setAttribute("y" + end, node.y);
-    });
-  }
+const applyCamera = () =>
+  SCENE.view.setAttribute("transform", `translate(${CAMERA.x} ${CAMERA.y}) scale(${CAMERA.k})`);
 
-  function highlightNode(path) {
-    const near = path ? neighbours.get(path) : null;
-    drawn.forEach((entry, key) => {
-      const on = !path || key === path || near.has(key);
-      entry.dot.classList.toggle("faded", !on);
-      entry.dot.classList.toggle("near", Boolean(path) && on && key !== path);
-      entry.label.classList.toggle("faded", !on);
-      entry.label.classList.toggle("show", Boolean(path) && on);
-    });
-    view.querySelectorAll("line").forEach(line => {
-      const touches = !path || line === undefined;
-      line.classList.toggle("faded", Boolean(path));
-      line.classList.remove("hot");
-    });
-    if (path) drawn.get(path).lines.forEach(({ line }) => {
-      line.classList.remove("faded"); line.classList.add("hot");
-    });
-  }
+function scenePoint(ev) {
+  const box = SCENE.svg.getBoundingClientRect();
+  return { x: (ev.clientX - box.left - CAMERA.x) / CAMERA.k,
+           y: (ev.clientY - box.top - CAMERA.y) / CAMERA.k };
+}
 
-  async function selectNode(path) {
-    SELECTED = path;
-    drawn.forEach((entry, key) => entry.dot.classList.toggle("sel", key === path));
-    highlightNode(path);
-    const note = await api("/api/node", { path });
-    const rows = (note.relations || []).map(r =>
-      `<div class="rel" data-p="${esc(r.path)}">` +
-      `<span class="t">${esc(r.rel_type || "relates-to")} ${r.direction === "in" ? "&larr;" : "&rarr;"}</span> ` +
-      `${esc(r.path)}</div>`).join("") || `<div class="dim">no relations</div>`;
-    $("#gdetail").innerHTML =
-      `<h3>${esc(note.title || path)}</h3><div class="dim" style="font-size:11px">${esc(path)}</div>` +
-      `<p><button data-open="${esc(path)}">Open note</button></p>` + rows;
-    $("#gdetail").classList.add("on");
-    $("#gdetail").querySelector("[data-open]").onclick = () => { openNote(path); setView("note"); };
-    $("#gdetail").querySelectorAll(".rel").forEach(r => r.onclick = () => selectNode(r.dataset.p));
-  }
+function moveNode(id) {
+  const { node, dot, label, lines } = SCENE.drawn.get(id);
+  dot.setAttribute("cx", node.x); dot.setAttribute("cy", node.y);
+  label.setAttribute("x", node.x + 9); label.setAttribute("y", node.y + 3);
+  lines.forEach(({ line, end }) => {
+    line.setAttribute("x" + end, node.x);
+    line.setAttribute("y" + end, node.y);
+  });
+}
 
-  function clearSelection() {
-    SELECTED = null;
-    drawn.forEach(entry => entry.dot.classList.remove("sel"));
-    highlightNode(null);
-    $("#gdetail").classList.remove("on");
-  }
+function highlightNode(id) {
+  const near = id ? SCENE.neighbours.get(id) : null;
+  SCENE.drawn.forEach((entry, key) => {
+    const on = !id || key === id || near.has(key);
+    entry.dot.classList.toggle("faded", !on);
+    entry.dot.classList.toggle("near", Boolean(id) && on && key !== id);
+    entry.label.classList.toggle("faded", !on);
+    entry.label.classList.toggle("show", Boolean(id) && on);
+  });
+  SCENE.view.querySelectorAll("line").forEach(line => {
+    line.classList.toggle("faded", Boolean(id));
+    line.classList.remove("hot");
+  });
+  if (id) SCENE.drawn.get(id).lines.forEach(({ line }) => {
+    line.classList.remove("faded"); line.classList.add("hot");
+  });
+}
 
-  function dragNode(path, at_) {
-    const entry = drawn.get(path);
-    entry.node.x = at_.x; entry.node.y = at_.y;
-    moveNode(path);
-  }
+async function selectNode(id) {
+  if (!SCENE.drawn.has(id)) return;
+  SELECTED = id;
+  SCENE.drawn.forEach((entry, key) => entry.dot.classList.toggle("sel", key === id));
+  highlightNode(id);
+  const panel = $("#gdetail");
+  panel.innerHTML = await SCENE.detail(id);
+  panel.classList.add("on");
+  panel.querySelectorAll("[data-open]").forEach(button =>
+    button.onclick = () => { openNote(button.dataset.open); setView("note"); });
+  panel.querySelectorAll("[data-sel]").forEach(row =>
+    row.onclick = () => selectNode(row.dataset.sel));
+}
+
+function clearSelection() {
+  SELECTED = null;
+  SCENE.drawn.forEach(entry => entry.dot.classList.remove("sel"));
+  highlightNode(null);
+  $("#gdetail").classList.remove("on");
+}
+
+function dragNode(id, at_) {
+  const entry = SCENE.drawn.get(id);
+  entry.node.x = at_.x; entry.node.y = at_.y;
+  moveNode(id);
+}
+
+// Bound once, for whichever scene is showing. Bound per draw, a second graph would stack a second
+// set of listeners on the same svg and every drag would move twice.
+function bindSceneOnce() {
+  if (bindSceneOnce.done) return;
+  bindSceneOnce.done = true;
+  const svg = $("#g");
+  const idOf = ev => ev.target.dataset && ev.target.dataset.p;
 
   svg.addEventListener("pointerover", ev => {
-    const path = ev.target.dataset && ev.target.dataset.p;
-    if (path && !SELECTED && !DRAG) highlightNode(path);
+    if (idOf(ev) && !SELECTED && !DRAG) highlightNode(idOf(ev));
   });
   svg.addEventListener("pointerout", ev => {
-    if (ev.target.dataset && ev.target.dataset.p && !SELECTED && !DRAG) highlightNode(null);
+    if (idOf(ev) && !SELECTED && !DRAG) highlightNode(null);
   });
-
   svg.addEventListener("pointerdown", function gpointerdown(ev) {
     svg.setPointerCapture(ev.pointerId);
-    const path = ev.target.dataset && ev.target.dataset.p;
-    if (path) { DRAG = { path, moved: false }; }
-    else { PANNING = { x: ev.clientX - VIEW.x, y: ev.clientY - VIEW.y }; svg.classList.add("panning"); }
+    if (idOf(ev)) { DRAG = { id: idOf(ev), moved: false }; }
+    else { PANNING = { x: ev.clientX - CAMERA.x, y: ev.clientY - CAMERA.y }; svg.classList.add("panning"); }
   });
   svg.addEventListener("pointermove", ev => {
-    if (DRAG) { DRAG.moved = true; dragNode(DRAG.path, point(ev)); return; }
-    if (PANNING) { VIEW.x = ev.clientX - PANNING.x; VIEW.y = ev.clientY - PANNING.y; applyView(); }
+    if (DRAG) { DRAG.moved = true; dragNode(DRAG.id, scenePoint(ev)); return; }
+    if (PANNING) { CAMERA.x = ev.clientX - PANNING.x; CAMERA.y = ev.clientY - PANNING.y; applyCamera(); }
   });
   svg.addEventListener("pointerup", ev => {
-    if (DRAG && !DRAG.moved) selectNode(DRAG.path);
+    if (DRAG && !DRAG.moved) selectNode(DRAG.id);
     else if (PANNING && ev.target === svg) clearSelection();
     DRAG = null; PANNING = null; svg.classList.remove("panning");
   });
-  svg.addEventListener("dblclick", ev => {
-    const path = ev.target.dataset && ev.target.dataset.p;
-    if (path) { openNote(path); setView("note"); }
-  });
+  svg.addEventListener("dblclick", ev => { if (idOf(ev)) SCENE.open(idOf(ev)); });
   svg.addEventListener("wheel", ev => {
     ev.preventDefault();
     const box = svg.getBoundingClientRect();
     const cx = ev.clientX - box.left, cy = ev.clientY - box.top;
-    const next = Math.min(8, Math.max(0.15, VIEW.k * Math.exp(-ev.deltaY * 0.0022)));
-    const ratio = next / VIEW.k;
-    VIEW.x = cx - (cx - VIEW.x) * ratio;
-    VIEW.y = cy - (cy - VIEW.y) * ratio;
-    VIEW.k = next;
-    applyView();
+    const next = Math.min(8, Math.max(0.15, CAMERA.k * Math.exp(-ev.deltaY * 0.0022)));
+    const ratio = next / CAMERA.k;
+    CAMERA.x = cx - (cx - CAMERA.x) * ratio;
+    CAMERA.y = cy - (cy - CAMERA.y) * ratio;
+    CAMERA.k = next;
+    applyCamera();
   }, { passive: false });
+}
 
-  $("#meta").textContent =
-    `${nodes.length} of ${data.total} notes · ${links.length} links · ` +
-    `drag a node, click it for detail, double-click to open`;
+// --- the two scenes ------------------------------------------------------------------
+
+async function drawGraph() {
+  SCENE_KIND = "notes";
+  const data = await api("/api/graph", { limit: 400 });
+  // /api/graph sends `nodes` as plain path STRINGS and the titles in a map beside them. Spreading
+  // a string gives {0:"R",1:"E",...} with no .path, which silently drops every edge - the lookup
+  // misses on both ends and the lines never get built.
+  const titles = data.titles || {};
+  drawScene({
+    address: "graph",
+    nodes: data.nodes.map(path => ({ id: path, label: titles[path] || path, kind: "note" })),
+    links: data.edges,
+    meta: (shown, linked) => `${shown} of ${data.total} notes · ${linked} links · ` +
+                             `drag a node, click it for detail, double-click to open`,
+    detail: async path => {
+      const note = await api("/api/node", { path });
+      const rows = (note.relations || []).map(r =>
+        `<div class="rel" data-sel="${esc(r.path)}">` +
+        `<span class="t">${esc(r.rel_type || "relates-to")} ${r.direction === "in" ? "&larr;" : "&rarr;"}</span> ` +
+        `${esc(r.path)}</div>`).join("") || `<div class="dim">no relations</div>`;
+      return `<h3>${esc(note.title || path)}</h3>` +
+        `<div class="dim" style="font-size:11px">${esc(path)}</div>` +
+        `<p><button data-open="${esc(path)}">Open note</button></p>` + rows;
+    },
+    open: path => { openNote(path); setView("note"); },
+  });
+}
+
+// The tag tree, drawn: a node per tag, sized by how many notes sit under it, a line from each
+// parent to its child. Rooted at one node (`#tags+<tag>`) it also hangs that subtree's notes off
+// the tags they carry. The whole tree never carries notes - that is the notes graph again, and a
+// vault's worth of leaves is what the layout cannot afford.
+async function drawTagGraph(root) {
+  SCENE_KIND = "tags:" + root;
+  const data = await api("/api/tag-graph", root ? { root, notes: 1, limit: 400 } : { limit: 400 });
+  const byId = Object.fromEntries(data.nodes.map(n => [n.id, n]));
+  const tagCount = data.nodes.filter(n => n.kind === "tag").length;
+  drawScene({
+    address: root ? "tags+" + root : "tags",
+    nodes: data.nodes.map(n => n.kind === "tag"
+      ? { id: n.id, label: `${n.label} (${n.notes})`, kind: "tag",
+          r: 4 + Math.min(14, Math.sqrt(n.notes)) }
+      : { id: n.id, label: n.label, kind: "note", r: 3, cls: "leaf" }),
+    links: data.edges,
+    meta: shown => `${tagCount} of ${data.total} tags` +
+                   (root ? ` under ${root} · ${shown - tagCount} notes` : "") +
+                   (data.truncated ? " · cut at the limit" : "") +
+                   ` · click a tag for detail, double-click to open its subtree`,
+    detail: async id => {
+      const n = byId[id];
+      if (n.kind === "note")
+        return `<h3>${esc(n.label)}</h3><div class="dim" style="font-size:11px">${esc(id)}</div>` +
+               `<p><button data-open="${esc(id)}">Open note</button></p>`;
+      return `<h3>${esc(id)}</h3>` + (n.meaning ? `<p>${esc(n.meaning)}</p>` : "") +
+        `<p class="dim">${n.notes} note${n.notes === 1 ? "" : "s"} under it · ` +
+        `${n.direct} carrying it directly</p>` +
+        `<p><a href="${tagHash(id)}">List its notes</a> · ` +
+        `<a href="#tags+${encodeURIComponent(id)}">Expand its notes here</a></p>` +
+        (n.parent ? `<div class="rel" data-sel="${esc(n.parent)}"><span class="t">parent &larr;</span> ` +
+                    `${esc(n.parent)}</div>` : "");
+    },
+    open: id => {
+      if (byId[id].kind === "note") { openNote(id); setView("note"); }
+      else location.hash = "tags+" + id;
+    },
+  });
 }
 
 boot();

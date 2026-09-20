@@ -64,6 +64,10 @@ List every file (recursively, skipping the usual ignores). For each: name, exten
 and for text files a one-line read of what it appears to be. Report the count and the apparent mix
 before starting.
 
+**Flag every transcript in the inventory.** A `.vtt`, an `.srt`, or any export full of timestamps
+and speaker tags is one file and many units, and it is the item most likely to be miscounted as one
+small placement (`references/ingest-sources.md` → Recordings, presentations and discussions).
+
 Nothing tracks what a previous run consumed, and nothing needs to: **the vault is the record.**
 Step 6 checks each unit against what is already there, and material already filed verbatim is
 reported as a duplicate and skipped. `.input/` is cleared at the end of a successful run (step 11),
@@ -80,6 +84,9 @@ mtime clustering, content continuity, shared entities.
 Output: a list of **intake units**, each with its member files. Everything downstream operates on
 units, never raw files.
 
+A transcript is the one file that always splits: one recording is many units, segmented by topic
+rather than by the order things were said (`references/ingest-sources.md` → The passes).
+
 ### 5. Extract each unit
 
 <!-- profile-hook: intake-decompose -->
@@ -87,7 +94,29 @@ units, never raw files.
 Per `references/ingest-sources.md`, produce an intake summary per unit. Extraction only — no vault
 writes yet, nothing added the source didn't contain.
 
+**Nothing is dropped, and a batch is where dropping happens.** Grouping several scraps into one unit
+merges their *placement*, never their content: every claim from every member file survives into the
+unit. The four things that may be dropped are listed in `references/ingest-sources.md` → Lose
+nothing, and that list is exhaustive. A unit is not extracted until every fact in its sources has a
+line in its summary.
+
+**Tag nodes are decided across the whole batch too.** Resolve the batch's subjects against this
+vault's tag tree once, by the ladder in `references/tagging.md`, and list every new node in one
+pass (`python3 .agents/skills/local-wiki/scripts/tags.py --vault <vault> add <node> --meaning "..."`, parents first) before anything is filed. Each unit then
+sets its own tags as it is filed.
+
 **Terms are resolved across the whole batch**, once per term, not per unit.
+
+**Extract before deciding what the material is about.** A structure chosen first becomes the sieve
+that drops everything not shaped like it, and a heading is a container, not content. For every
+source file with extractable text, take the mechanical baseline now — it is what step 9's second
+pass measures the notes against, and it is the only count in this mode that is not the agent's own
+opinion of its work:
+
+```bash
+python3 .agents/skills/local-wiki/scripts/extract_units.py extract <source> \
+  --out .wiki/.second-pass/<source>.units.txt
+```
 
 ### 6. Decide the shape of the whole batch — before any write
 
@@ -107,10 +136,40 @@ are too thin to stand alone, and which terms the batch adds to the glossary.
 Three or more units on a topic the vault has no home for is a **new folder**, not three loose notes.
 Two units on one topic is usually one note with two sections. A single unit is just `update`.
 
-Write the plan down before the first vault write. It is also the resume record.
+Write the plan down before the first vault write — to `.wiki/intake-log.md` in step 6, never only
+in the conversation. It is the resume record.
 
 **`intake` combined with `where`** stops here: report the plan and write nothing at all, not even the
 intake log.
+
+#### Register the plan in a file, not in the conversation
+
+**Write it to `.wiki/intake-log.md`** before the first vault write. A plan that exists only in the
+running conversation is lost the moment the run is interrupted, and the next run re-derives it from
+the folder — which is how material gets filed twice, or filed thinner the second time.
+
+```
+## Intake 2026-08-02 from .input/   [open]
+- screenshot_01..03.png -> processes/onboarding.md ## Compliance checks  [merge]    [ ]
+- notes-scratch.md      -> regulatory/target-market.md                   [new note] [ ]
+```
+
+- One line per unit: sources → destination and section → the rule that fired → a `[ ]` ticked in
+  step 9, once that unit is written **and its second pass has closed**.
+- The header carries `[open]`, and becomes `[done]` when every line is ticked.
+- **This is the resume record.** An interrupted run reads the last block and continues from the
+  unticked lines; it never re-inventories `.input/`.
+- Before appending, check `wc -l .wiki/intake-log.md` and move every `[done]` block to
+  `.wiki/intake-archive-<year>.md`, leaving at most the previous batch and this one. The archive is
+  written and never read; the live file is read whole only when resuming.
+
+### 6b. Delta pass — what of this batch is actually new
+
+Per unit, with its destination open, run `references/placement-rules.md` → Rule 0. This is what
+makes a re-dropped inbox a no-op: the check is per claim and by substance, so it holds however
+the material was renamed, reformatted or re-exported. Report the batch totals
+(`47 claims — 31 present, 12 new, 3 sharper, 1 conflicting`), and skip a unit whose every claim
+came back `present`.
 
 ### 7. Check the batch for contradictions
 
@@ -135,37 +194,47 @@ authoritative as material someone checked, and that is what the validation list 
 
 Full rules in `references/tracking.md` → Validation gate.
 
-### 9. File in waves of three — never the whole inbox in one pass
+### 9. File one unit at a time — and prove each one landed before starting the next
 
-Plan the whole inbox in steps 3–8; **file it at most 3 units at a time** (`intake_wave` in
-`.wiki/wiki-config.json`).
+Plan the whole inbox in steps 3–8; **file it one unit at a time.** A unit is one piece of material,
+so it is usually one source file and sometimes several (five screenshots of one whiteboard). Nothing
+about the next unit is read until the current one is written **and verified**.
 
 | | Why |
 |---|---|
-| **A wave is ≤3 units** | Each unit means reading the destination, deciding, writing, linking and indexing. Thirty of those in one pass is how a run runs out of room half-way and leaves the vault written but unindexed |
-| **Each wave finishes completely** | Written, linked, index updated, intake log marked — a point the run can stop at with nothing half-done |
-| **The next wave reads the plan, not the folder** | The step-6 plan is what is left. Re-inventorying `.input/` mid-run re-reads material already filed |
-| **Say where you are between waves** | "3 of 14 filed, next: the three MiFID scraps." A silent ten-minute run looks identical to a hung one |
+| **One unit at a time** | Each unit means reading the destination, deciding, writing, linking, indexing, and proving the source landed. Three of those interleaved is how the verification degrades into agreeing with the notes |
+| **Verified before the next starts** | `references/second-pass.md` re-reads the *source*. A source filed three units ago is out of context, and re-reading it then costs more and finds less |
+| **Each unit finishes completely** | Written, tagged (`tags.py set`), linked, index updated, second pass closed, intake log marked — a point the run can stop at with nothing half-done |
+| **The next unit reads the plan, not the folder** | The step-6 plan is what is left. Re-inventorying `.input/` mid-run re-reads material already filed |
+| **Say where you are between units** | "4 of 14 filed, next: the MiFID scraps." A silent ten-minute run looks identical to a hung one |
 
-For each unit in the wave, run `references/modes/update.md` steps 5–9 (read candidates, conflict
-check, validation gate, place, write, link, index), then mark those lines in the intake log as filed
-**before starting the next wave**. The log is what makes the run resumable — a wave written but not
-logged gets filed twice.
+Per unit, in this order:
+
+1. Run `references/modes/update.md` steps 5–9 — read candidates, conflict check, validation gate,
+   place, write, link, index.
+2. Run the **second pass** on every source file in the unit, per `references/second-pass.md`:
+   extract the baseline, `cover` the notes against it, double check both directions, self-critique,
+   collect the open questions. Write the gaps it finds **now**.
+3. Mark the unit's line in the intake log `[x]` — **only once its second pass closed.** A unit whose
+   second pass is still `open` keeps its `[ ]`, and the run says so.
+
+The intake log is what makes the run resumable — a unit written but not logged gets filed twice, and
+a unit logged before its second pass carries a mark that says "verified" about work nobody checked.
 
 The open-question cap is **per unit** (5), and a question already answered for one unit is not
 re-researched for the next.
 
 One unit per write operation, under ~200 lines.
 
-Order across waves: merges into existing notes first, then new notes in existing folders, then new
+Order across units: merges into existing notes first, then new notes in existing folders, then new
 folders. If the run is interrupted, the vault is left with the least structural churn — and the
-early waves are the cheap, low-risk ones.
+early units are the cheap, low-risk ones.
 
-**Three is a ceiling, not a target.** Drop to 1 when the units are large, when each lands in a
-different folder, or when the previous wave produced a correction — a wrong placement repeated
-three at a time is three notes to move instead of one.
+**A unit that produced a correction slows the rest down, not speeds them up.** If the second pass on
+one unit found a real loss, the next unit's first pass is the one that produced it — extract before
+deciding the structure, and expect to find the same loss again.
 
-The validation answer from step 7 applies to every unit — do not re-ask per unit.
+The validation answer from step 8 applies to every unit — do not re-ask per unit.
 
 ### 10. Once, at the end, for the whole batch
 
@@ -179,7 +248,7 @@ python3 .agents/skills/local-wiki/scripts/memory.py --vault <vault> promote --js
 .rag/bin/rag update --quiet
 ```
 
-Never per unit, never per wave. One episode for the batch's shape, not one per file — and any
+Never per unit. One episode for the batch's shape, not one per file — and any
 promotion `promote` reports goes in the report, by id (`references/agent-memory.md`).
 
 ### 11. Report
@@ -198,6 +267,13 @@ regulatory/  (new folder)
 Not filed (2):
   - invoice-scan.pdf - unrelated to anything in the vault
   - IMG_4471.png - no readable content
+```
+
+Then the second-pass line, which is never omitted — a batch with nothing to report there is a batch
+whose verification did not run:
+
+```
+Second pass: 14/14 files closed, 41 units recovered, 3 invented claims removed, 2 files still open
 ```
 
 Then the standard blocks (`references/modes/update.md` → Report) for questions, normalizations,
@@ -241,7 +317,8 @@ a departure from it.
 
 End with the checklist (`SKILL.md` → Closeout checklist). For `intake` the mandatory lines are:
 
-session startup (READY token) · git safety · **domain context read** · units filed (count) · conflict check · validation gate ·
+session startup (READY token) · git safety · **domain context read** · units filed (count) ·
+**second pass closed (files closed / files in batch)** · conflict check · validation gate ·
 links · index updated · intake log updated · contributors recorded · graph rescanned ·
 **search stated** · search index refreshed · **inbox cleared (asked)**
 
@@ -257,6 +334,9 @@ The last one is the one most often missed — if you did not ask, the line is `[
   filename.
 - **A whole subfolder in the staging area is one topic** — treat it as a unit boundary; the user's
   own grouping is evidence.
+- **A unit's second pass will not close** — its uncovered units stay listed, its intake-log line
+  stays `[ ]`, and the batch continues with the next unit. Never mark it filed to keep the report
+  tidy.
 - **`.input/` is empty** — say so and stop. That's the normal state of a drained inbox.
 - **Run interrupted** — re-run it. The vault shows what already landed, and step 6's
   duplicate check skips those units; nothing needs a resume file.

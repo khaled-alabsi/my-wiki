@@ -123,17 +123,18 @@ TINY_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
 
 
-def build_vault() -> Path:
+def build_vault(files: dict | None = None) -> Path:
     root = Path(tempfile.mkdtemp(prefix="serve-test-"))
     (root / ".wiki").mkdir()
     assets = root / ".wiki" / "ui-assets"
     assets.mkdir()
     for name, text in FAKE_ASSETS.items():
         (assets / name).write_text(text, encoding="utf-8")
-    for rel, text in VAULT_FILES.items():
+    for rel, text in (files or VAULT_FILES).items():
         path = root / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
+    (root / "pay").mkdir(exist_ok=True)
     (root / "pay" / "fees.py").write_text(
         "def fee(amount):\n    \"\"\"Flat 1.5%.\"\"\"\n    return amount * 0.015\n",
         encoding="utf-8")
@@ -189,12 +190,16 @@ def get_json(path: str, port: int = PORT):
 
 
 def put(path_value: str, markdown: str, token: str | None, port: int = PORT,
-        ctype: str = "application/json", site: str = "same-origin", extra: dict | None = None):
+        ctype: str = "application/json", site: str = "same-origin", extra: dict | None = None,
+        tags: list | None = None):
     headers = {"Content-Type": ctype, "Sec-Fetch-Site": site}
     if token is not None:
         headers["X-Wiki-Token"] = token
     headers.update(extra or {})
-    payload = json.dumps({"path": path_value, "markdown": markdown}).encode("utf-8")
+    fields = {"path": path_value, "markdown": markdown}
+    if tags is not None:
+        fields["tags"] = tags
+    payload = json.dumps(fields).encode("utf-8")
     return request("/api/note", "PUT", payload, headers, port=port)
 
 
@@ -1555,6 +1560,9 @@ def main() -> int:
     test_hidden_folders()
     test_source_scan_prunes()
     test_folder_writes(folder, cache)
+    test_tags_vault()
+    test_tags_in_a_plain_folder()
+    test_tags_render_in_a_browser()
 
     print()
     if _failures:
@@ -1734,6 +1742,291 @@ def test_folder_writes(root: Path, cache: Path) -> None:
         check("88 and one into an ignored folder", status == 403, str(status))
     finally:
         stop(server)
+
+
+# --- tags: a tree you can walk, filter by, draw and edit ---------------------------------------
+# Its own dummy vault, so the counts the checks above rely on stay what they were. `bank/b.md`
+# writes its tags as a block list on purpose: the page must read every form a vault already holds.
+
+TAG_FILES = {
+    ".wiki/tags.md": (
+        "# Tags\n\n"
+        "- `banking` — Running a bank.\n"
+        "- `banking/mifid` — EU investor protection.\n"
+        "- `banking/mifid/target-market`\n"
+        "- `banking/payments` — Moving money.\n"
+    ),
+    "bank/a.md": "---\ntitle: TM\ntags: [banking/mifid/target-market]\n---\n\n# Target market\n\nSuitability assessment.\n",
+    "bank/b.md": "---\ntags:\n  - banking/mifid\n---\n\n# MiFID\n\nInvestor protection.\n",
+    "bank/c.md": "---\ntags: [banking/payments]\n---\n\n# Instant payments\n\nA suitability question too.\n",
+    "bank/d.md": "---\ntags: [loose/unlisted]\n---\n\n# Loose\n",
+    "bank/e.md": "# Untagged\n\nSuitability, with no tag at all.\n",
+}
+
+
+def inventory_of(vault: Path) -> list[str]:
+    lines = (vault / ".wiki" / "tags.md").read_text(encoding="utf-8").splitlines()
+    return [line.split("`")[1] for line in lines if line.startswith("- `")]
+
+
+def test_tags_are_served(port: int) -> None:
+    status, note = get_json("/api/note?path=bank/a.md", port=port)
+    check("135 a note carries its tags", status == 200
+          and note.get("tags") == ["banking/mifid/target-market"], str(note.get("tags")))
+    status, block = get_json("/api/note?path=bank/b.md", port=port)
+    check("135 a block-list note reads the same", block.get("tags") == ["banking/mifid"],
+          str(block.get("tags")))
+    status, tree = get_json("/api/tree", port=port)
+    rows = {n["path"]: n for n in tree["notes"]}
+    check("136 tree rows carry tags", rows["bank/c.md"].get("tags") == ["banking/payments"]
+          and rows["bank/e.md"].get("tags") == [], str(rows["bank/c.md"]))
+
+    status, tags = get_json("/api/tags", port=port)
+    nodes = {n["tag"]: n for n in tags.get("nodes", [])}
+    check("137 the tag tree is served with parents, counts and meanings",
+          status == 200 and nodes.get("banking", {}).get("notes") == 3
+          and nodes["banking/mifid"]["parent"] == "banking"
+          and nodes["banking"]["meaning"] == "Running a bank.", str(tags)[:300])
+    unlisted = [n["tag"] for n in tags.get("unlisted", [])]
+    check("137 nodes only the notes carry are kept apart from the inventory's",
+          unlisted == ["loose", "loose/unlisted"] and "loose" not in nodes, str(unlisted))
+
+
+def test_search_filters_by_tag(port: int) -> None:
+    status, wide = get_json("/api/search?q=suitability&tag=banking", port=port)
+    paths = sorted({h["path"] for h in wide["hits"]})
+    check("138 a tag filter keeps the notes under that node",
+          paths == ["bank/a.md", "bank/c.md"], str(paths))
+    check("138 and says how many hits it removed", wide.get("tag_hidden", 0) >= 1
+          and wide.get("tag") == "banking", str({k: wide.get(k) for k in ("tag", "tag_hidden")}))
+    status, narrow = get_json("/api/search?q=suitability&tag=banking/mifid", port=port)
+    check("138 a deeper node is narrower",
+          sorted({h["path"] for h in narrow["hits"]}) == ["bank/a.md"], str(narrow["hits"])[:200])
+    status, listing = get_json("/api/search?q=&tag=banking", port=port)
+    check("138 a tag with no words lists the notes under it",
+          sorted(h["path"] for h in listing["hits"]) == ["bank/a.md", "bank/b.md", "bank/c.md"]
+          and all(h.get("matched_by") == "tag" for h in listing["hits"]), str(listing)[:300])
+    status, nothing = get_json("/api/search?q=suitability&tag=../../etc/passwd", port=port)
+    check("138 a tag is a KEY: an unknown one finds nothing and breaks nothing",
+          status == 200 and nothing["hits"] == [] and nothing.get("reason"), str(nothing)[:200])
+
+
+def test_tag_queries_and_graph(port: int) -> None:
+    status, under = get_json("/api/query?kind=tag&tag=banking", port=port)
+    check("139 the tag query is reachable from the page", under.get("count") == 3, str(under)[:200])
+    status, level = get_json("/api/query?kind=tag-tree&tag=banking", port=port)
+    check("139 and so is one level of the tree",
+          sorted(r["tag"] for r in level.get("results", [])) == ["banking/mifid", "banking/payments"],
+          str(level)[:200])
+
+    status, whole = get_json("/api/tag-graph", port=port)
+    by_id = {n["id"]: n for n in whole.get("nodes", [])}
+    check("140 the tag graph has a node per tag, sized by its notes",
+          status == 200 and by_id.get("banking", {}).get("notes") == 3
+          and by_id["banking/payments"]["kind"] == "tag", str(whole)[:300])
+    check("140 and an edge from each parent to its child",
+          {"source": "banking", "target": "banking/mifid", "rel_type": "parent-of"} in whole["edges"],
+          str(whole["edges"])[:300])
+    status, bounded = get_json("/api/tag-graph?limit=1", port=port)
+    check("140 the limit bounds it and says so",
+          len(bounded["nodes"]) == 1 and bounded["truncated"] is True, str(bounded)[:200])
+    status, rooted = get_json("/api/tag-graph?root=banking/mifid&notes=1", port=port)
+    kinds = {n["id"]: n["kind"] for n in rooted["nodes"]}
+    check("140 a rooted graph can carry its notes as leaves",
+          kinds.get("bank/a.md") == "note" and kinds.get("bank/b.md") == "note"
+          and "banking/payments" not in kinds, str(kinds))
+
+
+def test_tags_are_edited_through_the_one_write(vault: Path, token: str, port: int) -> None:
+    before = (vault / "bank/a.md").read_text(encoding="utf-8")
+    status, body = put("bank/a.md", before, token, port=port, tags=["banking/payments"])
+    after = (vault / "bank/a.md").read_text(encoding="utf-8")
+    check("141 a write carrying tags succeeds", status == 200, f"{status} {body[:160]}")
+    check("141 only the tags line changed",
+          after == before.replace("tags: [banking/mifid/target-market]", "tags: [banking/payments]"),
+          repr(after))
+    backups = sorted((vault / ".wiki" / ".trash").glob("*/bank/a.md"))
+    check("141 the previous version went to the trash first",
+          len(backups) == 1 and "target-market" in backups[0].read_text(encoding="utf-8"),
+          str(backups))
+
+    status, body = put("bank/a.md", after, token, port=port, tags=["banking/cards/debit"])
+    added = json.loads(body).get("inventory_added")
+    check("142 a tag new to the vault is listed by the same write, parent first",
+          status == 200 and added == ["banking/cards", "banking/cards/debit"], body[:200])
+    check("142 and lands sorted in the inventory",
+          inventory_of(vault) == ["banking", "banking/cards", "banking/cards/debit", "banking/mifid",
+                                  "banking/mifid/target-market", "banking/payments"],
+          str(inventory_of(vault)))
+
+    trash_before = len(list((vault / ".wiki" / ".trash").glob("*/bank/c.md")))
+    c_before = (vault / "bank/c.md").read_text(encoding="utf-8")
+    status, body = put("bank/c.md", c_before, token, port=port, tags=["bad:colon"])
+    check("142 a malformed tag is refused with 400", status == 400, f"{status} {body[:160]}")
+    check("142 and nothing was written or trashed",
+          (vault / "bank/c.md").read_text(encoding="utf-8") == c_before
+          and len(list((vault / ".wiki" / ".trash").glob("*/bank/c.md"))) == trash_before)
+
+    source = "---\ntags: [regulation/psd2]\n---\n\n# Untagged\n\nNow tagged in source mode.\n"
+    status, body = put("bank/e.md", source, token, port=port)
+    check("143 a source-mode save enriches the inventory too",
+          status == 200 and {"regulation", "regulation/psd2"} <= set(inventory_of(vault)),
+          f"{body[:160]} {inventory_of(vault)}")
+
+
+def test_tags_vault() -> None:
+    vault = build_vault(TAG_FILES)
+    port = PORT + 8
+    server = start(vault, port)
+    try:
+        status, html = request("/", port=port)
+        token = token_from_page(html)
+        test_tags_are_served(port)
+        test_search_filters_by_tag(port)
+        test_tag_queries_and_graph(port)
+        test_tags_are_edited_through_the_one_write(vault, token, port)
+
+        check("144 the page has a tag filter, a tag tree and a tag graph tab",
+              all(s in html for s in ('id="ftag"', '<datalist id="tagnames">', 'id="tagtree"',
+                                      'id="tab-tags"')), "tag markup missing")
+        check("144 and the code that fills, routes and draws them",
+              all(s in html for s in ("function loadTags", "function openTagListing",
+                                      "function drawTagGraph", "function editTags")),
+              "tag functions missing")
+        check("144 both graphs share one layout, not a copy of it",
+              html.count("function drawScene(") == 1 and html.count("function layoutScene(") == 1
+              and html.count("d2 < 40000") == 1, "the force layout exists more than once")
+    finally:
+        stop(server)
+
+    port = PORT + 9
+    server = start(vault, port, "--read-only")
+    try:
+        status, html = request("/", port=port)
+        status, body = put("bank/b.md", "x", token_from_page(html), port=port, tags=["banking"])
+        check("143 a read-only server refuses a tag edit like any other write", status == 405,
+              f"{status} {body[:120]}")
+    finally:
+        stop(server)
+
+
+def test_tags_render_in_a_browser() -> None:
+    """The tag surfaces exist only once JavaScript has run: chips, the listing, the tree in the
+    sidebar, the tag graph. Every one of them passes its server-side check on a page that draws
+    nothing, so they are asserted where they are drawn - same opt-in as the other browser checks."""
+    real = os.environ.get("WIKI_UI_ASSETS", "")
+    chrome = find_chrome()
+    if not real or not Path(real).is_dir() or not chrome:
+        print("  skip  145-149 tags in a browser — needs WIKI_UI_ASSETS and Chrome, as check 63 does")
+        return
+    vault = build_vault(TAG_FILES)
+    for name in list(FAKE_ASSETS) + ["asset-pins.json"]:
+        if not (Path(real) / name).exists():
+            print(f"  skip  145-149 tags in a browser — {name} missing from WIKI_UI_ASSETS")
+            return
+        shutil.copy2(Path(real) / name, vault / ".wiki" / "ui-assets" / name)
+    port = PORT + 11
+    server = start(vault, port)
+
+    def dump(address: str, signal: str) -> str:
+        """The whole DOM once the page has signalled `signal`, or "" if it never did."""
+        for budget in (30000, 90000):
+            dom = subprocess.run(
+                [chrome, "--headless", "--disable-gpu", "--no-sandbox", "--no-first-run",
+                 "--no-default-browser-check", f"--virtual-time-budget={budget}", "--dump-dom",
+                 f"http://127.0.0.1:{port}/#{address}"],
+                capture_output=True, text=True, timeout=180).stdout
+            if f'data-rendered="{signal}"' in dom:
+                return dom
+        return ""
+
+    def region(dom: str, opener: str, closer: str) -> str:
+        """One element of the dump. The page's own script names every selector, so a search of
+        the whole document is answered by the source as readily as by what was drawn."""
+        start_at = dom.find(opener)
+        end_at = dom.find(closer, start_at)
+        return dom[start_at:end_at] if start_at >= 0 and end_at > start_at else ""
+
+    try:
+        dom = dump("bank/a.md", "bank/a.md")
+        note = region(dom, '<article id="note"', "</article>")
+        check("145 a note's tags are chips linking into the tag tree",
+              'class="tagchip"' in note and 'href="#+banking%2Fmifid%2Ftarget-market"' in note,
+              "no tag chip in #note")
+        check("145 and they left the metadata strip", "<b>tags</b>" not in note and "<b>title</b>" in note,
+              "tags still shown as a frontmatter pair")
+        check("145 a locked page offers no way to edit them",
+              'id="tagadd"' not in note and "data-untag" not in note, "edit controls on a locked page")
+
+        aside = region(dom, "<aside>", "</aside>")
+        tree = region(aside, '<div id="tagtree"', "<h2>Vault</h2>")
+        check("149 the sidebar holds the tag tree, nested",
+              'data-tag="banking"' in tree and 'data-kids="banking"' in tree
+              and 'data-tag="banking/mifid/target-market"' in tree, "tag tree not nested")
+        check("149 each node shows the notes under it", '<span class="n">3</span>' in tree,
+              "no subtree count on the top node")
+        check("149 a node the inventory does not list is shown apart",
+              'class="tagrow unlisted" data-tag="loose"' in tree, "unlisted node not marked")
+        check("149 the tag filter completes from the vault's own tree",
+              '<option value="banking/payments">' in region(aside, '<datalist id="tagnames"', "</datalist>"),
+              "no tag completions")
+
+        listing = region(dump("+banking", "+banking"), '<article id="note"', "</article>")
+        check("146 a tag address lists the notes under it and below it",
+              all(f'data-p="bank/{n}.md"' in listing for n in "abc")
+              and 'data-p="bank/e.md"' not in listing, "listing is not the tag's subtree")
+        check("146 with its meaning and its children", "Running a bank." in listing
+              and 'href="#+banking%2Fmifid"' in listing, "no meaning or child chips")
+
+        svg = region(dump("tags", "tags"), '<svg id="g"', "</svg>")
+        radius = {m.group(2): float(m.group(1)) for m in
+                  re.finditer(r'<circle[^>]*\sr="([\d.]+)"[^>]*data-p="([^"]+)"', svg)}
+        check("147 the tag graph draws one node per tag",
+              svg.count('data-kind="tag"') == 6 and svg.count('data-kind="note"') == 0, str(radius))
+        check("147 a line from each parent to its child", svg.count("<line") == 4,
+              f"{svg.count('<line')} lines")
+        check("147 a tag with more notes under it is drawn bigger",
+              radius.get("banking", 0) > radius.get("loose/unlisted", 99), str(radius))
+
+        rooted = region(dump("tags+banking/mifid", "tags+banking/mifid"), '<svg id="g"', "</svg>")
+        check("148 a rooted tag graph hangs that subtree's notes off their tags",
+              rooted.count('data-kind="tag"') == 2 and rooted.count('data-kind="note"') == 2
+              and 'data-p="bank/b.md"' in rooted, "leaves missing from the rooted graph")
+    finally:
+        stop(server)
+
+
+def test_tags_in_a_plain_folder() -> None:
+    root = Path(tempfile.mkdtemp(prefix="serve-tagfolder-"))
+    for rel, text in TAG_FILES.items():
+        if rel.startswith(".wiki"):
+            continue
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    cache = Path(tempfile.mkdtemp(prefix="serve-cache-"))
+    (cache / "ui-assets").mkdir(parents=True, exist_ok=True)
+    for name, text in FAKE_ASSETS.items():
+        (cache / "ui-assets" / name).write_text(text, encoding="utf-8")
+    port = PORT + 10
+    server = start_folder(root, cache, port)
+    try:
+        status, tags = get_json("/api/tags", port=port)
+        unlisted = {n["tag"]: n for n in tags.get("unlisted", [])}
+        check("143 a plain folder builds the tag tree from its notes",
+              status == 200 and tags.get("nodes") == [] and unlisted.get("banking", {}).get("notes") == 3
+              and tags.get("reason"), str(tags)[:300])
+        status, html = request("/", port=port)
+        status, body = put("bank/e.md", "# Untagged\n", token_from_page(html), port=port,
+                           tags=["banking/new"])
+        check("143 a tag edit works there", status == 200
+              and "tags: [banking/new]" in (root / "bank/e.md").read_text(encoding="utf-8"),
+              f"{status} {body[:160]}")
+        check("143 and still creates no .wiki in somebody's folder", not (root / ".wiki").exists(),
+              "a tag edit turned a plain folder into half a vault")
+    finally:
+        stop(server)
+
 
 if __name__ == "__main__":
     sys.exit(main())

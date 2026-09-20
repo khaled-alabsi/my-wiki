@@ -1,6 +1,6 @@
 ---
 name: local-wiki
-description: Serves the engineering knowledge vault at /Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki, the one vault this skill belongs to. Answers questions from its notes with citations, files new material into the right note unprompted and links it to related notes both ways, drains the .input/ staging folder, refreshes the search index and graph after direct edits, audits for duplicates, orphans, broken links and stale index entries, and restructures on request — moving, merging or splitting notes and repairing the links, index entries and search results that breaks. Tracks who changed what, warns on contradictions, and checks the repo is in step with its remote before writing. Use when the user asks a question answerable from this vault, hands over content to file into it, points at the inbox, asks where something belongs or what a term means, asks what links to a note, asks to reindex after editing notes by hand, asks to check the vault's health, or asks to reset or empty the vault.
+description: Serves the engineering knowledge vault at /Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki, the one vault this skill belongs to. Answers questions from its notes with citations, files new material into the right note unprompted, tags it and links it to related notes, drains the .input/ staging folder, refreshes the search index and graph after direct edits, audits for duplicates, orphans, broken links and index drift, and restructures on request — moving, merging or splitting notes and repairing the links and index entries that breaks. Tracks who changed what, warns on contradictions, and checks the repo against its remote before writing. Use when the user asks a question answerable from this vault, hands over content to file into it, points at the inbox, asks where something belongs or what a term means, asks what links to a note, asks to reindex after editing notes by hand, asks to check the vault's health, asks to tag its notes, or asks to reset or empty the vault.
 ---
 
 # local-wiki — my-wiki
@@ -59,14 +59,15 @@ for you below.
 | Mode | Does |
 |---|---|
 | `update` | **Default.** Place incoming material into the right note or folder |
-| `ask` | Answer a question from the vault, with citations |
+| `ask` | Answer a question from the vault: read the question, restate it with its assumptions, search twice, verify every claim, cite; a long answer is also written to `.wiki/answers/` |
 | `where` | Say where incoming material would go, and write nothing |
 | `intake` | Drain `.input/` (or a named folder) into the vault as one batch |
 | `refresh` | Re-describe what changed, re-index, re-scan the graph |
 | `audit` | Report duplicates, orphans, broken links, index drift, split candidates |
 | `refactor` | Restructure on your instruction — move, rename, merge, split — then repair every link, the index, the graph and the search index |
 | `learn` | Consolidate what I got right and wrong into rules I apply next time |
-| `ui` | Open this vault in your browser — read, search, graph, glossary, time travel, edit, history, phone access. Feature list: `references/ui.md` |
+| `tag` | Tag the notes already in this vault: folder by folder, give each its tags from the vault's tag tree, add the nodes the tree lacks, and reshape it as it fills. Writes and reports; no gate |
+| `ui` | Open this vault in your browser — read, search, graph, tags, glossary, time travel, edit, history, phone access. Feature list: `references/ui.md` |
 | `reshape` | Move this vault to a different domain or structure — banking to AI — after showing you a plan |
 | `reset` | Empty the vault back to a fresh state — sample content only, or everything — and rebuild the derived state |
 | `enhance` | Improve or repair **this skill**, not the vault |
@@ -85,8 +86,9 @@ for you below.
 | "move X to Y", "merge these", "split this note", "reorganize this folder", "this is a mess" | `refactor` |
 | "open my wiki", "let me read/browse/edit my notes", "show me the graph" | `ui` |
 
-`help`, `learn`, `reshape`, `reset` and `enhance` are never inferred — you ask for them by name.
-`learn` changes how future runs decide, `enhance` changes this skill, **`reshape` changes what the
+`help`, `learn`, `tag`, `reshape`, `reset` and `enhance` are never inferred — you ask for them by
+name. `tag` writes a line into many notes in one run (filing one note tags it anyway, inside
+`update`), `learn` changes how future runs decide, `enhance` changes this skill, **`reshape` changes what the
 vault is about**, and **`reset` empties it**; none of those should start because a prompt mentioned
 another subject or a mistake.
 Material plus a question means `update`, then answer in the report.
@@ -147,13 +149,47 @@ a from-scratch rebuild discards descriptions people have refined. That is a `wik
   the one wider exception, and only after you accept its plan: it may move, rename, merge and
   split — but it never destroys. A superseded note goes to `.wiki/.trash/` after the destination
   is written and verified, never `rm`.
-- **Three bounded in-place edits are allowed**, and only these three: substituting a variant term
+- **Four bounded in-place edits are allowed**, and only these four: substituting a variant term
   with its canonical form at `certain` confidence (`references/glossary.md`), closing an open
-  question with a vault-sourced answer (`references/open-questions.md`), and inserting a relation
-  link (`references/linking.md`). All three are limited to notes the running task opened, never
-  apply inside code fences, URLs, paths, frontmatter or filenames, and every occurrence is reported.
+  question with a vault-sourced answer (`references/open-questions.md`), inserting a relation
+  link (`references/linking.md`), and setting the note's `tags` line (`references/tagging.md`). The
+  first three are limited to notes the running task opened and never apply inside code fences,
+  URLs, paths, frontmatter or filenames. The fourth is the one edit made *in* the frontmatter, and
+  it goes through `scripts/tags.py` only, which touches the `tags` key and no other byte. Every
+  occurrence of all four is reported.
+- **A tag says what a note is about, never where it goes, and the tag tree never drifts from the
+  notes.** Tags form a tree (`regulation/mifid/target-market`). I decide them, from the note and
+  from the tree this vault already has; only `scripts/tags.py` writes them. It refuses a tag that
+  `.wiki/tags.md` lacks, which is what keeps that inventory complete, and **a run that set a tag
+  ends with `tags.py check`; a non-zero exit is cleared in that run.** A shared tag may add a note
+  to a search shortlist. It never decides a placement (`references/tagging.md`).
+- **What is new is decided per claim, not per file.** Before writing, every claim in the material
+  gets a verdict against the open destination — present, sharper, conflicting or new — and only
+  the last two are written. The same material re-dropped in a different file, format or wording
+  adds nothing (`references/placement-rules.md` → Rule 0).
+- **Nothing is dropped on the way in.** Filing is lossless: every claim, value, condition,
+  exception and qualifier in the material lands in the vault. Summarizing it, keeping the highlights,
+  or dropping a detail for being minor or for making a note long is forbidden — material too long for
+  one note splits into more notes. Only four things may be dropped, and the list is exhaustive
+  (`references/ingest-sources.md` → Lose nothing).
+- **Losslessness is proved against the source, per file, before that file is marked filed.** A pass
+  that thinned the material cannot detect the thinning by re-reading its own summary, so `intake`
+  files **one unit at a time** and closes each source file with a second pass: a mechanical unit
+  count taken from the source, a coverage check of the notes against it, a double check in both
+  directions, a self-critique, and an open-question sweep. A file with units still uncovered is not
+  filed, whatever the notes look like (`references/second-pass.md`).
+- **An answer is verified before it is given, and an answer file is not a note.** Every claim names
+  a note opened in that run, every assumption about what the question meant is written down with
+  its ground, and every part of the question is covered or declared uncovered. A long answer kept
+  in `.wiki/answers/` is never indexed and never cited as a source by a later run
+  (`references/answering.md`).
 - **Never state what the source material didn't.** Transcribe a screenshot; don't infer the parts
   that are cut off, and don't fill gaps from general knowledge.
+- **A transcript is processed, never filed.** A recording of a presentation or a discussion is raw
+  material: it is segmented by topic, its claims classified by what kind of claim each one is, and
+  the knowledge filed as notes. The transcript itself never becomes a note, and a four-line summary
+  of it is not an extraction — the detail is why the recording was worth reading
+  (`references/ingest-sources.md` → Recordings, presentations and discussions).
 - **The vault is the only source for answers.** General knowledge, if offered at all, is labelled as
   outside the vault and kept separate from the sourced answer.
 - **A term is never defined from general knowledge** (`references/glossary.md`).
@@ -244,7 +280,7 @@ a from-scratch rebuild discards descriptions people have refined. That is a `wik
    `.agents/skills/local-wiki/references/modes/update.md`:
    `references/modes/update.md` (`update` and `where`), `references/modes/ask.md`,
    `references/modes/intake.md`, `references/modes/refresh.md`, `references/modes/audit.md`,
-   `references/modes/refactor.md`, `references/modes/learn.md`,
+   `references/modes/refactor.md`, `references/modes/learn.md`, `references/modes/tag.md`,
    `references/modes/reshape.md`, `references/modes/reset.md`, `references/modes/enhance.md`.
 
    `ui` mode is one command and has no mode file:
@@ -290,6 +326,7 @@ Closeout
   [x] validation gate .......... you confirmed the content is correct
   [x] note written ............. processes/onboarding.md ## Compliance checks
   [x] links ..................... 2 inline, 1 back-edge
+  [x] tags ...................... 2 set, 1 node added — tags check OK: 38 nodes, 212 of 218 notes tagged
   [x] index updated ............ 1 file line, 1 glossary term
   [x] contributors recorded .... 1 file, as you@example.com
   [x] graph rescanned .......... 11 edges
@@ -348,8 +385,17 @@ python3 .agents/skills/local-wiki/scripts/graph.py query --neighbors <file> --de
 python3 .agents/skills/local-wiki/scripts/graph.py query --path-between <a> <b> --json --vault /Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki
 python3 .agents/skills/local-wiki/scripts/graph.py query --concept <TERM> --json --vault /Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki
 python3 .agents/skills/local-wiki/scripts/graph.py query --components --json --vault /Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki
+python3 .agents/skills/local-wiki/scripts/graph.py query --tag <node> --json --limit 10 --vault /Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki
+python3 .agents/skills/local-wiki/scripts/graph.py query --tag-tree [<node>] --json --vault /Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki
 python3 .agents/skills/local-wiki/scripts/graph.py suggest --path <file> -k 5 --vault /Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki
 python3 .agents/skills/local-wiki/scripts/serve.py --open --vault /Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki   # for YOU, not me
+
+# tags — the one writer of a note's tags and of the tag tree; never edit .wiki/tags.md by hand
+python3 .agents/skills/local-wiki/scripts/tags.py --vault /Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki add <node> --meaning "<what it covers>"
+python3 .agents/skills/local-wiki/scripts/tags.py --vault /Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki set <file> --add <tag> [--remove <tag>]
+python3 .agents/skills/local-wiki/scripts/tags.py --vault /Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki move <old> <new>
+python3 .agents/skills/local-wiki/scripts/tags.py --vault /Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki pending --limit 25 --json
+python3 .agents/skills/local-wiki/scripts/tags.py --vault /Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki check    # exit 1 = clear it now
 
 # what I learned — never read .wiki/agent-memory/episodes.jsonl directly
 python3 .agents/skills/local-wiki/scripts/memory.py --vault /Users/Khaled.Alabsi/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-wiki rules --scope placement
@@ -400,6 +446,10 @@ skill rather than inherited:
   remote. A diverged checkout blocks writing until you resolve it; you get the exact commands.
 - **Relation linking** — every write links to related notes in both directions, so the vault stays
   navigable. Ask "what links to this?" any time.
+- **Tags, as a tree** — every note I file gets tags that say what it is about, written as paths
+  (`regulation/mifid/target-market`) so a general subject holds narrower ones. `.wiki/tags.md`
+  lists every node with what it covers. Ask "what is tagged X?" any time, walk the tree in the UI,
+  and say `tag` to have me tag the notes that were here before.
 - **The admin reorg prompt** — when the structure is overdue for review (30 days, or a folder past
   25 notes), you are asked whether to run one — but only if your role is `admin` in
   `.wiki/memory_local.md`. Set it yourself if you want to be asked.
@@ -408,6 +458,9 @@ skill rather than inherited:
   cache, adopt a rename). Anything destructive, or reaching outside the vault, is shown to you and
   asked about rather than run.
 - **`.wiki/wiki_gaps.md`** — questions this vault couldn't answer are recorded rather than forgotten.
+- **`.wiki/answers/`** — long answers, with their sources and the assumptions they were built on.
+  Derived from the notes, so never indexed, never linked from a note, and never used as a source
+  for a later answer.
 - **`.input/`** — the drop folder for bulk material. Read-only to this skill; you're asked to clear
   it once its contents are filed.
 - **The memory file** — `.wiki/memory_local.md` is yours alone, git-ignored, and holds how you like

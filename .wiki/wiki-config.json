@@ -37,5 +37,7 @@
   "intake_wave": 3,
   "dashboard_port": null,
   "hidden_folders": [],
-  "relation_types": []
+  "relation_types": [],
+  "tag_nodes_max": 300,
+  "tag_branch_notes": 25
 }

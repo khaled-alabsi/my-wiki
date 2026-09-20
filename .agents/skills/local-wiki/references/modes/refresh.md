@@ -80,6 +80,17 @@ python3 .agents/skills/local-wiki/scripts/graph.py query --broken --vault <vault
 Someone renaming a heading by hand is the single most common source of a dead anchor, and a refresh
 is when it surfaces. Report broken links; fixing them in note text is `update`'s job or the user's.
 
+The same goes for tags. A note edited by hand, in Obsidian or in the UI, can carry a tag this vault
+has never seen:
+
+```bash
+python3 .agents/skills/local-wiki/scripts/tags.py --vault <vault> check
+```
+
+Report what it prints. `refresh` tags nothing and lists nothing; each failure line names the
+command that clears it, and a vault with many untagged notes wants a `tag` run
+(`references/tagging.md`).
+
 ### 7. Report
 
 ```
@@ -98,6 +109,9 @@ Glossary (2 added, 1 upgraded):
 Broken links (1):
 - processes/onboarding.md -> regulatory/mifid.md#target-market — that heading no longer exists
 
+Tags: tags check DRIFT — 1 failure
+- unlisted  payments/instant  (payments/sepa-instant.md)
+
 .rag index updated (8 files re-embedded). Graph updated (12 edges).
 ```
 
@@ -108,7 +122,7 @@ Omit any block that is empty. "Nothing changed since the last scan" is a complet
 End with the checklist (`SKILL.md` → Closeout checklist). For `refresh` the mandatory lines are:
 
 session startup (READY token) · files re-described (new/changed/removed counts) · glossary carried forward ·
-broken links checked · graph rescanned · **search stated** · search index refreshed
+broken links checked · tags checked · graph rescanned · **search stated** · search index refreshed
 
 ## Edge cases
 

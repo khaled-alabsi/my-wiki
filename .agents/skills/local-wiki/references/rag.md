@@ -135,6 +135,9 @@ so plainly is better than a silent grep answer — that line is the signal the v
   content, not layout; the manifest knows layout.
 - An **exact-token** lookup — a filename, a code symbol, a specific number. Grep is faster and
   exact; retrieval is fuzzy by design.
+- **"Every note about this subject"** — `.rag` has no tag filter (`--path`, `--ext`, `--source` and
+  `--since` are all it filters by). The tag tree answers that: `graph.py query --tag <node>`
+  (`references/tagging.md`).
 
 ## The rule that keeps it honest
 

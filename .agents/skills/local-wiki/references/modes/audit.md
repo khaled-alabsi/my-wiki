@@ -74,6 +74,13 @@ a reorganization is admin-gated.
 `undefined` entries, terms in 2+ notes with no entry, variant terms still present in note text with
 per-file counts.
 
+**Tags** (`references/tagging.md`) — `python3 .agents/skills/local-wiki/scripts/tags.py --vault <vault> check`, every failure line as it prints (a tag the
+inventory lacks, a node nothing carries, a node with no parent, a malformed tag, a node listed
+twice), each naming the command that clears it. Its warnings, quantified: nodes over the split
+threshold, nodes with no meaning line, one leaf name under two parents. The untagged count per
+folder, from `python3 .agents/skills/local-wiki/scripts/tags.py --vault <vault> pending --limit 0`; a large one is the signal to run `tag`. Audit reports these;
+listing a node or setting a tag edits the vault, which is `tag`'s or `update`'s job.
+
 **Validation backlog** — count `.wiki/todos_validations.md`'s open boxes, and flag any note carrying blank
 `validated from:` fields with no corresponding entry, or vice versa. The two drifting apart means a
 validation was recorded in one place only.

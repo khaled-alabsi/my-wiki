@@ -46,10 +46,20 @@ material is too late.
 Empty or absent → carry on, that is the normal state of a young vault.
 
 Per `references/ingest-sources.md`, reduce whatever was supplied to an intake summary: topic, key
-facts, entities, terms (resolved against the index's `## Business Glossary`), open questions, and
-shape.
+facts, entities, terms (resolved against the index's `## Business Glossary`), tags (the subjects
+the material is about, each resolved against this vault's tag tree by the ladder in
+`references/tagging.md`), open questions, and shape.
+
+Run `references/placement-rules.md` → Rule 0 (the delta pass) once the destination is open: every
+claim gets a verdict — present, sharper, conflicting or new — and only `new` and `sharper` are
+written. The counts go in the report.
 
 Do not write anything to the vault yet, and do not add anything the source didn't contain.
+
+**A transcript is not one intake summary.** A recording of a presentation or a discussion segments
+into several units first — each with its own topic, shape and destination — and each is routed from
+step 3 on its own. Never carry a whole recording through this workflow as a single item
+(`references/ingest-sources.md` → Recordings, presentations and discussions).
 
 ### 4. Route via the index
 
@@ -59,6 +69,11 @@ H2 sub-bullets. Produce a shortlist of up to 3 candidates.
 Search directly for the entity names too, and — since this vault has a `.rag` workspace — run one
 semantic search here (`references/rag.md`). It is the cheapest way to catch a near-duplicate phrased
 differently, which is exactly what grep misses.
+
+The tag tree adds candidates too: for a subject that resolved to a node,
+`python3 .agents/skills/local-wiki/scripts/graph.py query --tag <node> --json --limit 10 --vault <vault>` lists the notes under it, and they join
+the shortlist to be opened like any other. A shared tag never decides where material goes
+(`references/tagging.md`).
 
 `graph.py query --neighbors` on a strong candidate is the other cheap probe: it says what is already
 connected to that note, which often surfaces the better destination.
@@ -124,6 +139,10 @@ Cross-referencing rule to the rest of the shortlist.
 Per `references/glossary.md`: new terms get entries in step 12; known variants follow the confidence
 ladder; a contradicted definition is a step-5 conflict, not a silent glossary rewrite.
 
+Settle the tags in the same pass, per `references/tagging.md` → Reuse before creating: which
+existing nodes the note will carry and which new nodes it needs. One to five, the most specific
+node each time.
+
 ### 8. Decide the form
 
 Per `references/note-shaping.md`. The destination's existing form wins.
@@ -134,7 +153,7 @@ Per `references/open-questions.md`, resolved against this vault only. Cap at 5. 
 answer closes a question.
 
 **`where` stops here.** It reports the placement decision, the runner-up, cross-reference
-candidates, and what 10–12 *would* do — and writes nothing: no note text, no index, no glossary, no
+candidates, and what 10–12 *would* do, the tags it would set included — and writes nothing: no note text, no index, no glossary, no
 links, no `rag update`, no `graph.py scan`, no contributors entry. It lists index conflicts
 **without fixing them**.
 
@@ -151,6 +170,17 @@ Then write, following standard markdown and the form decided in 6b:
 - **New note**: frontmatter per `references/tracking.md` → Provenance, an H1, then the content.
 - **Multi-step process or decision tree** → also an inline ` ```mermaid ` block.
 - Term normalizations and question closures land in this same edit.
+- **Tags**, on every note this run created or extended, only through the tool and never typed into
+  the frontmatter by hand. New nodes first, parents first, then the note:
+
+  ```bash
+  python3 .agents/skills/local-wiki/scripts/tags.py --vault <vault> add <node> --meaning "<what it covers>"
+  python3 .agents/skills/local-wiki/scripts/tags.py --vault <vault> set <note> --add <tag> [--add <tag>]
+  ```
+
+  `set` refuses a tag `.wiki/tags.md` lacks and names the `add` to run, which is what keeps the
+  inventory complete. A note that is already tagged gains a tag only when the new material brought
+  a subject it did not have.
 
 Stay under ~200 lines per write operation.
 
@@ -201,7 +231,11 @@ python3 .agents/skills/local-wiki/scripts/memory.py --vault <vault> record --mod
   --rationale "<why this one>" [--applied-rule RULE-017] --user-id <user_id>
 python3 .agents/skills/local-wiki/scripts/memory.py --vault <vault> promote --json
 .rag/bin/rag update --quiet
+python3 .agents/skills/local-wiki/scripts/tags.py --vault <vault> check            # only when this run set a tag
 ```
+
+`tags.py check` exiting non-zero is cleared now, by the command each failure line names
+(`references/tagging.md` → The consistency command).
 
 Never per file. Never `rag index --full`. Never in `where` mode. On `rag` failure, report the
 command once and move on — a stale semantic index degrades search, it breaks nothing.
@@ -244,6 +278,10 @@ Links added (3):
 Glossary (1 added):
 - BPKN — inferred from usage in 3 notes; worth checking
 
+Tags (2 set, 1 node added):
+- processes/onboarding.md — banking/accounts/onboarding, regulation/mifid
+- new node: banking/accounts/onboarding — taking on a new client
+
 Index repairs (1):
 - regulatory/mifid.md — description didn't match content, rewrote it
 
@@ -252,6 +290,10 @@ Heads-up: processes/onboarding.md was edited by bob@example.com 3h ago.
 
 .rag index updated (2 files re-embedded). Graph updated (3 edges).
 ```
+
+- **Nothing dropped** — the completeness check from `references/ingest-sources.md` → Lose nothing:
+  every claim in the material has a destination, or is listed here with which of the four drop
+  reasons applied
 
 Don't narrate the search. The user wants to know where their note went.
 

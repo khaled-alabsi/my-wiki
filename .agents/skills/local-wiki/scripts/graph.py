@@ -8,6 +8,7 @@ Stdlib only (sqlite3). Subcommands:
     graph.py query  --backlinks <path> | --orphans | --hubs [--min-degree N] | --broken | --oneway
     graph.py query  --path-between <a> <b> [--max-hops 4] | --type <rel> [--from <path>]
     graph.py query  --concept <term> | --components
+    graph.py query  --tag <node> | --tag-tree [<node>]
     graph.py query  ... [--json] [--limit 25] [--as-of YYYY-MM-DD]
     graph.py suggest --path <p> [-k 5]
     graph.py export --json <out|->
@@ -36,6 +37,9 @@ Edges are TYPED (`rel_type`: requires, regulates, superseded-by, ...) and may be
 carrying valid_from/valid_until in its frontmatter bounds the edges that leave it, so `--as-of`
 answers "what did this vault say in 2024" instead of only "what does it say now". Concepts - the
 vault's own glossary terms - are nodes too, derived from the manifest, never authored here.
+Tags are a TREE of nodes as well (`regulation/mifid`): a note under a child is under every ancestor,
+so `--tag regulation` returns the notes of everything below it and `--tag-tree` walks one level
+at a time. tags.py is their only writer; this tool only answers (references/tagging.md).
 
 TWO AUDIENCES, deliberately separated:
 
@@ -62,7 +66,8 @@ from pathlib import Path
 
 DB_NAME = "graph.sqlite"
 MANIFEST = Path(".wiki") / "manifest.json"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+TAG_SEPARATOR = "/"
 DEFAULT_DEPTH = 2
 DEFAULT_HUB_DEGREE = 8
 DEFAULT_K = 5
@@ -119,6 +124,19 @@ SCHEMA = """
         path TEXT NOT NULL,
         kind TEXT
     );
+    CREATE TABLE IF NOT EXISTS tags (
+        path TEXT PRIMARY KEY,
+        parent TEXT,
+        name TEXT,
+        meaning TEXT,
+        listed INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS note_tags (
+        tag TEXT NOT NULL,
+        path TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS note_tags_tag ON note_tags(tag);
+    CREATE INDEX IF NOT EXISTS note_tags_path ON note_tags(path);
     CREATE INDEX IF NOT EXISTS edges_source ON edges(source);
     CREATE INDEX IF NOT EXISTS edges_target ON edges(target);
     CREATE INDEX IF NOT EXISTS edges_type ON edges(rel_type);
@@ -142,7 +160,7 @@ def connect(vault: Path) -> sqlite3.Connection:
     except (sqlite3.DatabaseError, TypeError, ValueError):
         stored = 0
     if stored != SCHEMA_VERSION:
-        for table in ("edges", "notes", "concepts", "concept_edges", "meta"):
+        for table in ("edges", "notes", "concepts", "concept_edges", "tags", "note_tags", "meta"):
             conn.execute(f"DROP TABLE IF EXISTS {table}")
 
     conn.executescript(SCHEMA)
@@ -242,15 +260,17 @@ def cmd_scan(args: argparse.Namespace) -> int:
             for record in records:
                 insert_note(conn, record)
         rebuild_concepts(conn, manifest, records)
+        rebuild_tags(conn, manifest, records)
         conn.execute("INSERT OR REPLACE INTO meta VALUES ('scanned_at', ?)",
                      (manifest.get("scanned_at", ""),))
 
     notes = conn.execute("SELECT COUNT(*) AS n FROM notes").fetchone()["n"]
     edges = conn.execute("SELECT COUNT(*) AS n FROM edges").fetchone()["n"]
     terms = conn.execute("SELECT COUNT(*) AS n FROM concepts").fetchone()["n"]
+    tag_nodes = conn.execute("SELECT COUNT(*) AS n FROM tags").fetchone()["n"]
     conn.close()
     mode = "incremental" if args.since_manifest else "full"
-    print(f"{mode} scan: {notes} notes, {edges} links, {terms} concepts")
+    print(f"{mode} scan: {notes} notes, {edges} links, {terms} concepts, {tag_nodes} tags")
     return 0
 
 
@@ -308,6 +328,172 @@ def rebuild_concepts(conn: sqlite3.Connection, manifest: dict, records: list[dic
         for path in sorted(mentions.get(term, set())):
             if path != source:
                 conn.execute("INSERT INTO concept_edges VALUES (?, ?, ?)", (term, path, "mentions"))
+
+
+# --- tags ------------------------------------------------------------------------------------
+# A tag is a full path in a tree (`regulation/mifid/target-market`), and a note under a child is
+# under every ancestor. references/tagging.md owns the rules; scan_vault.py reads the tags and the
+# vault's inventory into the manifest; tags.py is the only writer. This half only answers.
+
+def list_tag_ancestors(tag: str) -> list[str]:
+    """Every node above this one, top first."""
+
+    parts = tag.split(TAG_SEPARATOR)
+
+    return [TAG_SEPARATOR.join(parts[:i]) for i in range(1, len(parts))]
+
+
+def is_tag_under(tag: str, node: str) -> bool:
+    """Whether a tag is the node or one of its descendants. A prefix test, never LIKE: `_` is a
+    legal tag character and a LIKE wildcard, so `reg_a` would silently match `regxa`."""
+
+    return tag == node or tag.startswith(node + TAG_SEPARATOR)
+
+
+def rebuild_tags(conn: sqlite3.Connection,
+                 manifest: dict,
+                 records: list[dict]) -> None:
+    """Tag nodes and which note carries which, derived from the manifest. Never authored here.
+
+    Rebuilt whole on every scan, incremental or not, for the reason concepts are: whether a node
+    exists depends on the WHOLE vault - the last note to drop a tag removes the node - and the
+    manifest is already in memory.
+    """
+
+    conn.execute("DELETE FROM tags")
+    conn.execute("DELETE FROM note_tags")
+    inventory = manifest.get("tag_inventory") or {}
+    nodes = set(inventory)
+    for record in records:
+        for tag in record.get("tags") or []:
+            conn.execute("INSERT INTO note_tags VALUES (?, ?)", (tag, record["path"]))
+            nodes.add(tag)
+    for tag in sorted(set(nodes)):
+        nodes.update(list_tag_ancestors(tag))
+    for tag in sorted(nodes):
+        head, _sep, name = tag.rpartition(TAG_SEPARATOR)
+        listed = inventory.get(tag)
+        conn.execute("INSERT OR REPLACE INTO tags VALUES (?, ?, ?, ?, ?)",
+                     (tag, head, name, (listed or {}).get("meaning", ""), 1 if listed is not None else 0))
+
+
+def build_tag_index(note_tags: list[tuple[str, str]], inventory: dict) -> dict:
+    """The tag tree with its counts, from (tag, note) pairs and the listed nodes.
+
+    Pure, so the vault's store and a plain folder's in-memory scan answer through the same code.
+    `direct` is the notes carrying the node itself; `notes` is the distinct notes under it.
+    """
+
+    index: dict[str, dict] = {}
+    carriers: dict[str, set[str]] = {}
+    for tag in list(inventory) + [tag for tag, _path in note_tags]:
+        for node in list_tag_ancestors(tag) + [tag]:
+            if node in index:
+                continue
+            head, _sep, name = node.rpartition(TAG_SEPARATOR)
+            listed = inventory.get(node)
+            index[node] = {"tag": node, "name": name, "parent": head, "direct": 0, "notes": 0,
+                           "children": 0, "meaning": (listed or {}).get("meaning", ""),
+                           "listed": listed is not None}
+    for tag, path in note_tags:
+        index[tag]["direct"] += 1
+        for node in list_tag_ancestors(tag) + [tag]:
+            carriers.setdefault(node, set()).add(path)
+    for node, entry in index.items():
+        entry["notes"] = len(carriers.get(node, ()))
+        if entry["parent"]:
+            index[entry["parent"]]["children"] += 1
+
+    return index
+
+
+def load_note_tags(conn: sqlite3.Connection, as_of: str | None = None) -> list[tuple[str, str]]:
+    """(tag, note) pairs for the notes that existed on `as_of`."""
+
+    rows = conn.execute(
+        "SELECT t.tag AS tag, t.path AS path, n.valid_from AS valid_from, "
+        "n.valid_until AS valid_until FROM note_tags t LEFT JOIN notes n ON n.path = t.path "
+        "ORDER BY t.path, t.tag").fetchall()
+
+    return [(row["tag"], row["path"]) for row in rows if in_window(row, as_of)]
+
+
+def load_listed_tags(conn: sqlite3.Connection) -> dict:
+    """The nodes the vault's inventory lists, with their meanings."""
+
+    rows = conn.execute("SELECT path, meaning FROM tags WHERE listed = 1").fetchall()
+
+    return {row["path"]: {"meaning": row["meaning"] or ""} for row in rows}
+
+
+def list_tag_tree_level(index: dict, node: str = "") -> list[dict]:
+    """The children of one node - the top level when no node is given - busiest first."""
+
+    rows = [entry for entry in index.values() if entry["parent"] == node]
+
+    return sorted(rows, key=lambda entry: (-entry["notes"], entry["tag"]))
+
+
+def find_notes_under_tag(note_tags: list[tuple[str, str]], node: str) -> list[dict]:
+    """One row per note under a node, naming the tag that puts it there."""
+
+    found: dict[str, str] = {}
+    for tag, path in note_tags:
+        if is_tag_under(tag, node) and path not in found:
+            found[path] = tag
+
+    return [{"path": path, "tag": tag} for path, tag in sorted(found.items())]
+
+
+def build_tag_graph(index: dict,
+                    note_tags: list[tuple[str, str]],
+                    titles: dict,
+                    root: str = "",
+                    notes: bool = False,
+                    limit: int = 0) -> dict:
+    """The tag tree as nodes and edges, optionally one subtree, optionally with its notes as leaves.
+
+    Bounded here, not in the browser: the page's layout is O(n^2). Tag nodes and note leaves each
+    take at most `limit`, busiest tags first, and `truncated` says when either was cut.
+    """
+
+    tag_nodes = [entry for entry in index.values() if not root or is_tag_under(entry["tag"], root)]
+    tag_nodes.sort(key=lambda entry: (-entry["notes"], entry["tag"]))
+    total = len(tag_nodes)
+    shown = tag_nodes[:limit] if limit > 0 else tag_nodes
+    shown_ids = {entry["tag"] for entry in shown}
+    nodes = [{"id": entry["tag"], "kind": "tag", "label": entry["name"], "parent": entry["parent"],
+              "notes": entry["notes"], "direct": entry["direct"], "meaning": entry["meaning"]}
+             for entry in shown]
+    edges = [{"source": entry["parent"], "target": entry["tag"], "rel_type": "parent-of"}
+             for entry in shown if entry["parent"] in shown_ids]
+
+    leaves = []
+    if notes:
+        leaves = sorted({(tag, path) for tag, path in note_tags if tag in shown_ids},
+                        key=lambda pair: (pair[1], pair[0]))
+    shown_leaves = leaves[:limit] if limit > 0 else leaves
+    for path in sorted({path for _tag, path in shown_leaves}):
+        nodes.append({"id": path, "kind": "note", "label": titles.get(path) or path.split("/")[-1],
+                      "parent": "", "notes": 0, "direct": 0, "meaning": ""})
+    edges += [{"source": tag, "target": path, "rel_type": "tagged"} for tag, path in shown_leaves]
+
+    return {"nodes": nodes, "edges": edges, "root": root, "total": total,
+            "truncated": len(shown) < total or len(shown_leaves) < len(leaves)}
+
+
+def build_tag_graph_payload(conn: sqlite3.Connection,
+                      root: str = "",
+                      notes: bool = False,
+                      as_of: str | None = None,
+                      limit: int = 0) -> dict:
+    """What the page's tag graph is drawn from. `root` is a KEY into the tag tree, never a path."""
+
+    note_tags = load_note_tags(conn, as_of)
+    index = build_tag_index(note_tags, load_listed_tags(conn))
+    titles = {row["path"]: row["title"] for row in conn.execute("SELECT path, title FROM notes")}
+
+    return build_tag_graph(index, note_tags, titles, root.casefold().strip(TAG_SEPARATOR), notes, limit)
 
 
 # --- query -----------------------------------------------------------------------------------
@@ -541,6 +727,37 @@ def query_concept(conn, term: str) -> Query:
              lambda rs: [f"  [{r['kind']}]  {r['path']}" for r in rs])
 
 
+def query_tag(conn, tag: str, as_of=None) -> Query:
+    """Every note under a node - the node itself and all its descendants."""
+
+    node = tag.casefold().strip(TAG_SEPARATOR)
+    note_tags = load_note_tags(conn, as_of)
+    entry = build_tag_index(note_tags, load_listed_tags(conn)).get(node)
+    rows = find_notes_under_tag(note_tags, node)
+    meaning = (entry or {}).get("meaning", "")
+    direct = (entry or {}).get("direct", 0)
+    head = node + (f" — {meaning}" if meaning else "")
+    return q("tag", {"tag": node, "meaning": meaning, "direct": direct},
+             f"{head}\n{len(rows)} note(s) under it, {direct} carrying it directly:",
+             f"{node}: no note carries this tag or anything under it", rows,
+             lambda rs: [f"  {r['path']}  [{r['tag']}]" for r in rs])
+
+
+def query_tag_tree(conn, node: str = "", as_of=None) -> Query:
+    """One level of the tag tree. Walking it a level at a time is what keeps a big tree out of
+    context - ask for the root, then for the node that looks right."""
+
+    parent = node.casefold().strip(TAG_SEPARATOR)
+    index = build_tag_index(load_note_tags(conn, as_of), load_listed_tags(conn))
+    rows = list_tag_tree_level(index, parent)
+    where = f"under {parent}" if parent else "at the top of the tag tree"
+    return q("tag-tree", {"tag": parent}, f"{len(rows)} node(s) {where}:",
+             f"no tag nodes {where}", rows,
+             lambda rs: [f"  {r['notes']:4} note(s)  {r['tag']}"
+                         + (f"  (+{r['children']} below)" if r["children"] else "")
+                         + (f"  — {r['meaning']}" if r["meaning"] else "") for r in rs])
+
+
 def query_components(conn, as_of=None) -> Query:
     """Disconnected islands. The real measure of whether a vault is navigable.
 
@@ -632,10 +849,14 @@ def cmd_query(args: argparse.Namespace) -> int:
             query = query_concept(conn, args.concept)
         elif args.components:
             query = query_components(conn, as_of)
+        elif args.tag:
+            query = query_tag(conn, args.tag, as_of)
+        elif args.tag_tree is not None:
+            query = query_tag_tree(conn, args.tag_tree, as_of)
         else:
             print("error: query needs one of --neighbors, --backlinks, --orphans, --hubs, "
-                  "--broken, --oneway, --path-between, --type, --concept, --components",
-                  file=sys.stderr)
+                  "--broken, --oneway, --path-between, --type, --concept, --components, "
+                  "--tag, --tag-tree", file=sys.stderr)
             return 2
         return emit(query, args.json, args.limit)
     finally:
@@ -706,6 +927,13 @@ def suggest_via_terms(manifest: dict, source: str, k: int) -> list[tuple[float, 
                 low = word.lower()
                 if low not in STOPWORDS:
                     bag[low] += 1
+        # A tag is a subject somebody decided the note is about, so it is evidence of a relation
+        # in its own right. The rarity weighting below is what lets a rare shared tag outrank a
+        # common shared word - it needs no weight of its own.
+        for tag in record.get("tags") or []:
+            bag[tag] += 1
+            for segment in tag.split(TAG_SEPARATOR):
+                bag[segment] += 1
         return bag
 
     bags = {path: terms(record) for path, record in records.items()}
@@ -948,6 +1176,7 @@ def serve_stats(conn: sqlite3.Connection) -> dict:
         "notes": scalar("SELECT COUNT(*) FROM notes"),
         "edges": scalar("SELECT COUNT(*) FROM edges"),
         "concepts": scalar("SELECT COUNT(*) FROM concepts"),
+        "tags": scalar("SELECT COUNT(*) FROM tags"),
         "scanned_at": (conn.execute("SELECT value FROM meta WHERE key='scanned_at'").fetchone()
                        or [""])[0],
         "relation_types": types,
@@ -969,8 +1198,11 @@ def serve_node(conn: sqlite3.Connection, path: str) -> dict:
         "ORDER BY source", (path,)).fetchall()]
     terms = [r["term"] for r in conn.execute(
         "SELECT DISTINCT term FROM concept_edges WHERE path = ? ORDER BY term", (path,)).fetchall()]
+    tags = [r["tag"] for r in conn.execute(
+        "SELECT tag FROM note_tags WHERE path = ? ORDER BY tag", (path,)).fetchall()]
     return {"path": row["path"], "title": row["title"], "valid_from": row["valid_from"],
-            "valid_until": row["valid_until"], "relations": out + inbound, "concepts": terms}
+            "valid_until": row["valid_until"], "relations": out + inbound, "concepts": terms,
+            "tags": tags}
 
 
 def serve_search(conn: sqlite3.Connection, term: str, limit: int) -> list[dict]:
@@ -1016,6 +1248,10 @@ def api_query(conn: sqlite3.Connection, vault: Path, params: dict, limit: int,
                                    int(params.get("max_hops") or DEFAULT_MAX_HOPS), types, as_of)
     elif kind == "type":
         query = query_by_type(conn, params.get("type", ""), params.get("from") or None, as_of)
+    elif kind == "tag":
+        query = query_tag(conn, params.get("tag", ""), as_of)
+    elif kind == "tag-tree":
+        query = query_tag_tree(conn, params.get("tag", ""), as_of)
     else:
         return {"error": f"unknown query kind: {kind or '(none)'}"}
     results = query["results"]
@@ -1062,6 +1298,9 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument("--concept", help="notes that define or mention a glossary term")
     query.add_argument("--components", action="store_true",
                        help="disconnected islands — is this one vault or five")
+    query.add_argument("--tag", help="notes under a tag node and everything below it")
+    query.add_argument("--tag-tree", nargs="?", const="", default=None, metavar="TAG",
+                       help="one level of the tag tree: the top, or the children of TAG")
     query.add_argument("--types", help="comma-separated relation types to traverse")
     query.add_argument("--as-of", help="answer as the vault stood on this date (YYYY-MM-DD)")
     query.add_argument("--json", action="store_true",
